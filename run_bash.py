@@ -73,6 +73,31 @@ def preview_skill(name: str) -> str:
 def get_skill(name: str) -> str:
     return _skill_manager.get_skill(name) or f"Skill '{name}' not found."
 
+def grep(pattern: str, path: str, recursive: bool = True) -> str:
+    import re as _re
+    from pathlib import Path as _Path
+    results = []
+    target = _Path(path)
+    files = target.rglob('*') if (recursive and target.is_dir()) else [target]
+    for f in files:
+        if not f.is_file():
+            continue
+        try:
+            for i, line in enumerate(f.read_text(errors='ignore').splitlines(), 1):
+                if _re.search(pattern, line):
+                    results.append(f"{f}:{i}: {line.strip()}")
+        except Exception:
+            continue
+    return '\n'.join(results) if results else "No matches found."
+
+def get_clipboard() -> str:
+    result = subprocess.run(['pbpaste'], capture_output=True, text=True)
+    return result.stdout if result.returncode == 0 else f"Error reading clipboard: {result.stderr}"
+
+def set_clipboard(text: str) -> str:
+    result = subprocess.run(['pbcopy'], input=text, capture_output=True, text=True)
+    return "Copied to clipboard." if result.returncode == 0 else f"Error writing clipboard: {result.stderr}"
+
 def run_sub_agent(prompt: str) -> str:
     from my_agent_loop import Agent
     print("Running sub-agent")
@@ -278,7 +303,46 @@ tools = skill_tools + [{
 }
 ]
 
-all_tools = tools + [{
+all_tools = tools + [
+{
+    "type": "function",
+    "function": {
+        "name": "grep",
+        "description": "Search file contents by regex pattern and return matching lines with file path and line number",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Regex pattern to search for"},
+                "path": {"type": "string", "description": "File or directory path to search"},
+                "recursive": {"type": "boolean", "description": "Recursively search subdirectories (default true)"}
+            },
+            "required": ["pattern", "path"]
+        }
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "get_clipboard",
+        "description": "Read the current contents of the macOS clipboard",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "set_clipboard",
+        "description": "Write text to the macOS clipboard",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Text to copy to clipboard"}
+            },
+            "required": ["text"]
+        }
+    }
+},
+{
     "type": "function",
     "function": {
         "name": "run_sub_agent",
@@ -308,5 +372,8 @@ tool_handler = {
     'run_sub_agent': run_sub_agent,
     'fetch_text': fetch_text,
     'fetch_html': fetch_html,
-    'web_search': web_search
+    'web_search': web_search,
+    'grep': grep,
+    'get_clipboard': get_clipboard,
+    'set_clipboard': set_clipboard
 }
