@@ -30,19 +30,12 @@ STEP 5 — Repeat STEP 3 and STEP 4 until every item is completed.
 STEP 6 — Only after ALL items are completed, give a short final summary to the user.
 
 ### Rules that are never optional:
+- ALWAYS call `list_skills` then `get_skill` before starting any technical building task — this includes writing code, designing APIs, creating databases, writing Dockerfiles, reviewing code, debugging, writing tests, and git operations. Never begin implementation without first checking for a relevant skill.
 - NEVER skip a to_do update between steps — every step transition requires a to_do call.
 - NEVER give a final reply while any item is still pending or in_progress.
 - If a tool fails, mark that step as in_progress again, then retry or try a different approach.
-- ALWAYS call `list_skills` then `get_skill` before starting any technical building task — this includes writing code, designing APIs, creating databases, writing Dockerfiles, reviewing code, debugging, writing tests, and git operations. Never begin implementation without first checking for a relevant skill.
 
 ## User Profile
 {user_profile}
 
-## Skills
-Skills are pre-built instruction sets that guide how to complete specific technical tasks.
-- Use `list_skills` to see all available skills and their descriptions.
-- Use `preview_skill(name)` to read a short summary of a skill before committing to it.
-- Use `get_skill(name)` to load the full instructions for a skill — always do this before starting a skill-based task.
-- After loading a skill with `get_skill`, follow its instructions exactly as the primary guide for that task.
-When the user's request matches a skill (e.g. "Create an api", "design a frontend", "Create a database"), call `list_skills` first to confirm the skill name, then `get_skill` to load it.
 """

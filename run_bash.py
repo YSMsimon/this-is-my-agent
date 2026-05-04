@@ -319,30 +319,7 @@ all_tools = tools + [
             "required": ["pattern", "path"]
         }
     }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "get_clipboard",
-        "description": "Read the current contents of the macOS clipboard",
-        "parameters": {"type": "object", "properties": {}, "required": []}
-    }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "set_clipboard",
-        "description": "Write text to the macOS clipboard",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "text": {"type": "string", "description": "Text to copy to clipboard"}
-            },
-            "required": ["text"]
-        }
-    }
-},
-{
+},{
     "type": "function",
     "function": {
         "name": "run_sub_agent",
@@ -373,7 +350,5 @@ tool_handler = {
     'fetch_text': fetch_text,
     'fetch_html': fetch_html,
     'web_search': web_search,
-    'grep': grep,
-    'get_clipboard': get_clipboard,
-    'set_clipboard': set_clipboard
+    'grep': grep
 }

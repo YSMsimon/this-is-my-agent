@@ -100,6 +100,34 @@ class DB:
         )
         self.conn.commit()
 
+    def store_knowledge(self, user_id: str, source_type: str, source_ref: str,
+                        content: str, embedding: list, chunk_index: int = 0):
+        self.cursor.execute(
+            """INSERT INTO knowledge_base (user_id, source_type, source_ref, chunk_index, content, embedding)
+               VALUES (%s, %s, %s, %s, %s, %s::vector)""",
+            (user_id, source_type, source_ref, chunk_index, content, self._vec(embedding))
+        )
+        self.conn.commit()
+
+    def search_knowledge(self, embedding: list, top_k: int = 5, user_id: str = None) -> list:
+        vec = self._vec(embedding)
+        if user_id:
+            self.cursor.execute(
+                """SELECT source_type, source_ref, content FROM knowledge_base
+                   WHERE user_id = %s AND embedding IS NOT NULL
+                   ORDER BY embedding <=> %s::vector LIMIT %s""",
+                (user_id, vec, top_k)
+            )
+        else:
+            self.cursor.execute(
+                """SELECT source_type, source_ref, content FROM knowledge_base
+                   WHERE embedding IS NOT NULL
+                   ORDER BY embedding <=> %s::vector LIMIT %s""",
+                (vec, top_k)
+            )
+        return [{'source_type': r[0], 'source_ref': r[1], 'content': r[2]}
+                for r in self.cursor.fetchall()]
+
     def close(self):
         self.cursor.close()
         self.conn.close()

@@ -21,6 +21,22 @@ class Agent:
         self._system_prompt = ''
         self._last_user_message = ''
 
+    KNOWLEDGE_TOOLS = {'fetch_text', 'fetch_html', 'read_file'}
+
+    def _chunk(self, text: str, size: int = 1500, overlap: int = 200) -> list:
+        chunks, start = [], 0
+        while start < len(text):
+            chunks.append(text[start:start + size])
+            start += size - overlap
+        return chunks
+
+    def _store_knowledge(self, args: dict, result: str):
+        source_ref = args.get('url') or args.get('file_path') or ''
+        source_type = 'webpage' if 'url' in args else 'file'
+        for i, chunk in enumerate(self._chunk(result)):
+            embedding = self.get_embedding(chunk)
+            self.db.store_knowledge(self.user_id, source_type, source_ref, chunk, embedding, i)
+
     def get_embedding(self, text: str) -> list:
         response = self.client.embeddings(model=self.config.embedding_model, prompt=text)
         embedding = response.embedding
@@ -41,188 +57,62 @@ class Agent:
             embedding, top_k=5, user_id=self.user_id, exclude_ids=recent_ids
         )
 
+        knowledge = self.db.search_knowledge(embedding, top_k=5, user_id=self.user_id)
+
         messages = list(history)
 
-        """
-        if memories:
-            rag_lines = "\n".join(f"[{m['role']}]: {m['content']}" for m in memories)
-            messages.append({'role': 'system', 'content': f"Relevant past context:\n{rag_lines}"})
-        """
+        if knowledge:
+            rag_lines = "\n\n".join(
+                f"[{k['source_type']} — {k['source_ref']}]\n{k['content']}" for k in knowledge
+            )
+            messages.insert(0, {'role': 'system', 'content': f"Relevant knowledge:\n{rag_lines}"})
+
         self._save_turn({'role': 'user', 'content': user_message})
         messages.append({'role': 'user', 'content': user_message})
         return messages
 
     def _update_profile(self, user_message: str, assistant_response: str):
         existing = self.db.get_user_profile(self.user_id)
-        schema_example = json.dumps({
-            "identity": {
-                "name": "string or null",
-                "nickname": "string or null",
-                "age": "number or null",
-                "location": "string or null",
-                "timezone": "string or null",
-                "occupation": "string or null",
-                "education": "string or null"
-            },
 
-            "professional_profile": {
-                "job_title": "string or null",
-                "experience_years": "number or null",
-                "background_summary": "string",
-                "skills": [
-                    {
-                        "name": "Python",
-                        "level": "beginner/intermediate/advanced",
-                        "years": 2
-                    }
-                ],
-                "languages": ["python", "typescript", "go"],
-                "frameworks": ["fastapi", "react", "spring boot"],
-                "tools": ["docker", "git", "postgresql"]
-            },
+        base_prompt = f"""You are a profile extraction engine. Extract facts the user explicitly stated and merge them into the existing profile JSON.
 
-            "online_presence": {
-                "github_username": "string or null",
-                "github_repos": [
-                    {
-                        "name": "receipt-tracker",
-                        "description": "AI receipt parser app",
-                        "url": "string"
-                    }
-                ],
-                "website": "string or null",
-                "linkedin": "string or null",
-                "youtube_channel": "string or null",
-                "twitter": "string or null"
-            },
+RULES:
+- Only include fields that have real extracted values from this conversation.
+- NEVER add a field just because it exists in the schema — only add it if the user stated a value.
+- NEVER use null, empty strings, or placeholder text. If you don't have a value, omit the field entirely.
+- Preserve all existing fields. Overwrite only if the user explicitly corrected something.
+- For lists: append new unique items, never duplicate.
+- Output ONLY raw JSON. No markdown, no code fences, no commentary.
 
-            "current_projects": [
-                {
-                    "name": "Trading Bot",
-                    "description": "Solana multi-wallet bot",
-                    "status": "active",
-                    "tech_stack": ["python", "solana", "react"],
-                    "goals": ["wallet management", "automated trading"]
-                }
-            ],
+AVAILABLE FIELDS (only use the ones you have real values for):
+identity: name, age, location, timezone, occupation, education
+professional_profile: job_title, experience_years, background_summary, skills([name,level,years]), languages[], frameworks[], tools[]
+online_presence: github_username, github_repos([name,description,url]), website, linkedin, youtube_channel, twitter
+current_projects: [name, description, status, tech_stack[], goals[]]
+learning_profile: learning_goals[], current_focus, preferred_learning_style[], difficulty_preference
+interests: technical[], business[], personal[]
+preferences: editor, os, communication_style, response_format[], likes[], dislikes[]
+goals: short_term[], long_term[]
 
-            "learning_profile": {
-                "learning_goals": [
-                    "Learn React with TypeScript",
-                    "Understand vector databases"
-                ],
-                "current_focus": "agent development",
-                "preferred_learning_style": [
-                    "hands-on examples",
-                    "step-by-step breakdowns"
-                ],
-                "difficulty_preference": "beginner-friendly but production-focused"
-            },
+EXAMPLES:
 
-            "interests": {
-                "technical": ["LLMs", "RAG", "agent memory", "backend systems"],
-                "business": ["startups", "fintech"],
-                "personal": ["fitness", "photography"]
-            },
+Short — user only mentioned their name:
+{{"identity": {{"name": "Simon"}}}}
 
-            "preferences": {
-                "editor": "vscode",
-                "os": "mac",
-                "communication_style": "concise but technical",
-                "response_format": ["examples", "code", "architecture diagrams"],
-                "likes": ["clean code", "project-based learning"],
-                "dislikes": ["too much theory"]
-            },
+Medium — user mentioned name, languages, and GitHub:
+{{"identity": {{"name": "Simon"}}, "professional_profile": {{"languages": ["python", "typescript"]}}, "online_presence": {{"github_username": "YSMsimon"}}}}
 
-            "behavioral_patterns": {
-                "common_questions": [
-                    "backend architecture",
-                    "database design",
-                    "AI agent implementation"
-                ],
-                "frequent_topics": ["FastAPI", "PostgreSQL", "React"],
-                "project_stage": "building MVPs"
-            },
+Long — user shared many details:
+{{"identity": {{"name": "Simon", "location": "Canada"}}, "professional_profile": {{"job_title": "backend developer", "languages": ["python", "go"], "frameworks": ["fastapi", "react"], "tools": ["docker", "postgresql"]}}, "online_presence": {{"github_username": "YSMsimon"}}, "current_projects": [{{"name": "ai-agent", "description": "local AI agent with memory", "status": "active", "tech_stack": ["python", "ollama", "postgresql"]}}], "learning_profile": {{"current_focus": "agent architecture"}}, "goals": {{"short_term": ["build fullstack apps"], "long_term": ["launch SaaS products"]}}}}
 
-            "constraints": {
-                "budget": "low/free tools preferred",
-                "hardware": "MacBook",
-                "deployment_targets": ["local", "cloud", "mobile"]
-            },
+EXISTING PROFILE:
+{json.dumps(existing) if existing else "{{}}"}
 
-            "conversation_memory": {
-                "last_active_topics": [
-                    "vector database memory",
-                    "React TypeScript",
-                    "GitHub collaboration"
-                ],
-                "saved_context": [
-                    "working on receipt tracker",
-                    "learning Spring Boot"
-                ]
-            },
+CONVERSATION:
+USER: {user_message}
+ASSISTANT: {assistant_response}
 
-            "goals": {
-                "short_term": [
-                    "Build fullstack apps",
-                    "Learn agent architecture"
-                ],
-                "long_term": [
-                    "Become freelance developer",
-                    "Launch SaaS products"
-                ]
-            },
-
-            "metadata": {
-                "profile_version": "1.0",
-                "created_at": "ISO datetime",
-                "updated_at": "ISO datetime"
-            }
-        }, indent = 2)
-
-        base_prompt = f"""
-        You are a structured memory/profile extraction engine.
-
-        Your task:
-        Update the user's profile JSON using ONLY explicit facts stated by the user
-        in the provided conversation.
-
-        CORE RULES:
-        1. Extract ONLY information directly stated by the user.
-        2. Never infer, assume, guess, or deduce missing details.
-        - Example:
-            User says "I use FastAPI" -> allowed: add "FastAPI"
-            User says "I build APIs" -> NOT allowed: infer FastAPI
-        3. Preserve all existing fields unless explicitly updated.
-        4. If the user explicitly corrects previous information, overwrite it.
-        5. If user explicitly says unknown/none/null, set field to null.
-        6. Do not remove fields unless explicitly contradicted or nulled.
-        7. Ignore assistant suggestions unless user confirmed them.
-        8. Output ONLY valid raw JSON.
-        9. No markdown, explanations, comments, or code fences.
-
-        MERGING RULES:
-        - Strings: overwrite only when explicitly updated.
-        - Lists:
-            - append unique new items
-            - do not duplicate existing values
-        - Objects:
-            - recursively merge fields
-        - Arrays of objects:
-            - merge by "name" when possible
-
-        PROFILE SCHEMA:
-        {schema_example}
-
-        EXISTING PROFILE:
-        {json.dumps(existing, indent=2)}
-
-        CURRENT CONVERSATION:
-        USER: {user_message}
-        ASSISTANT: {assistant_response}
-
-        UPDATED PROFILE JSON:
-        """
+UPDATED PROFILE JSON:"""
 
         messages = [{'role': 'user', 'content': base_prompt}]
         max_retries = 3
@@ -241,7 +131,7 @@ class Agent:
                     f"Error: {e}\n"
                     f"Occurred at character position: {e.pos if hasattr(e, 'pos') else 'unknown'}\n"
                     f"Raw response that failed:\n{text}\n\n"
-                    f"Fix the JSON and return only a valid JSON object matching this schema:\n{schema_example}"
+                    f"Fix the JSON and return only a valid raw JSON object. No nulls, no placeholders, only fields with real values."
                 )
                 messages.append({'role': 'assistant', 'content': resp.message.content})
                 messages.append({'role': 'user', 'content': error_feedback})
@@ -249,9 +139,8 @@ class Agent:
     def _save_turn(self, new_messages: Dict):
         role = new_messages.get('role')
         content = new_messages.get('content')
-        embedding = self.get_embedding(content)
         tool_call_id = new_messages.get('tool_call_id')
-        self.db.add_message(self.user_id, role, content, embedding, tool_call_id)
+        self.db.add_message(self.user_id, role, content, None, tool_call_id)
 
         if role == 'user':
             self._last_user_message = content
@@ -300,6 +189,8 @@ class Agent:
             name = tool_call.function.name
             args = tool_call.function.arguments
             result = tool_handler[name](**args)
+            if name in self.KNOWLEDGE_TOOLS and isinstance(result, str) and result.strip():
+                self._store_knowledge(args, result)
             self._save_turn({'role': 'tool', 'content': f"Name: {name}, Arguments: {args}, Result: {result}", 'tool_call_id': tool_call_id})
             messages.append({'role': 'tool', 'content': f"Name: {name}, Arguments: {args}, Result: {result}", 'tool_call_id': tool_call_id})
         return self._execute(messages)

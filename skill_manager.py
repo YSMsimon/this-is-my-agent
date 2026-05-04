@@ -70,6 +70,7 @@ class SkillManager:
         return f"**{skill.manifest.name}**\n{skill.manifest.description}\n\n{preview}\n..."
 
     def get_skill(self, name: str) -> Optional[str]:
+        print(f"Attempting to load skill: {name}")
         skill = self.skills.get(name)
         if not skill:
             available = ', '.join(self.skills.keys()) or 'none'

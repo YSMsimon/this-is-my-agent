@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS llm_memory (
     user_id       TEXT NOT NULL,
     role          TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
     content       TEXT NOT NULL,
-    embedding     vector(768),
+    embedding     vector(1024),
     tool_call_id  TEXT,
     created_at    TIMESTAMP DEFAULT now()
 );
@@ -22,3 +22,18 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     preferences JSONB DEFAULT '{}',
     updated_at  TIMESTAMP DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS knowledge_base (
+    id          SERIAL PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_ref  TEXT,
+    chunk_index INT DEFAULT 0,
+    content     TEXT NOT NULL,
+    embedding   vector(1024),
+    created_at  TIMESTAMP DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_embedding
+    ON knowledge_base USING hnsw (embedding vector_cosine_ops)
+    WHERE embedding IS NOT NULL;
