@@ -2,10 +2,16 @@ import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 
+def fetch_html(url: str) -> str:
+    resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    return resp.text
+
 def fetch_text(url: str) -> str:
     print(f"Fetching text content for URL: {url}")
-    html = fetch_html(url)
-    soup = BeautifulSoup(html, "html.parser")
+    resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
     for tag in soup(["script", "style", "nav", "footer"]):
         tag.decompose()
     return soup.get_text(separator="\n", strip=True)

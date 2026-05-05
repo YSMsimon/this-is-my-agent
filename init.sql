@@ -12,10 +12,6 @@ CREATE TABLE IF NOT EXISTS llm_memory (
 CREATE INDEX IF NOT EXISTS idx_llm_memory_user_time
     ON llm_memory (user_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_llm_memory_embedding
-    ON llm_memory USING hnsw (embedding vector_cosine_ops)
-    WHERE embedding IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id     TEXT PRIMARY KEY,
     preferences JSONB DEFAULT '{}',

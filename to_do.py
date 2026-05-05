@@ -45,12 +45,17 @@ class ToDoManager:
 
     def to_do(self, items:List[PlanItem]) -> str:
         print("Updating to-do list...")
-        if isinstance(items, str):
-            items = json.loads(items)
-        for idx, item in enumerate(items):
-            if isinstance(item, dict):
-                items[idx] = PlanItem(**item)
-        result = self.update(items)
-        print(result)
-        return result
+        try:
+            if isinstance(items, str):
+                items = json.loads(items)
+            for idx, item in enumerate(items):
+                if isinstance(item, dict):
+                    items[idx] = PlanItem(**item)
+            result = self.update(items)
+            print(result)
+            return result
+        except Exception as e:
+            print(f"Error updating to-do list: {e}")
+            return f"Error updating to-do list: {e}"
+
     

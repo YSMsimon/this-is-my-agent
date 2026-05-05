@@ -87,14 +87,25 @@ def grep(pattern: str, path: str, recursive: bool = True) -> str:
                 if _re.search(pattern, line):
                     results.append(f"{f}:{i}: {line.strip()}")
         except Exception:
-            continue
+            return f"Error reading file {f}"
     return '\n'.join(results) if results else "No matches found."
+
+def glob(pattern: str, path: str = '.') -> str:
+    print(f"Searching for files with pattern: {pattern} in path: {path}")
+    from pathlib import Path
+    try:
+        root = Path(path).expanduser().resolve()
+        matches = sorted(root.glob(pattern))
+        return '\n'.join(str(m) for m in matches) if matches else "No files found."
+    except Exception as e:
+        return f"Error: {e}"
 
 def run_sub_agent(prompt: str) -> str:
     from my_agent_loop import Agent
     print("Running sub-agent")
     subagent = Agent(config(), tools=tools)
     return subagent.run(prompt)
+
 
 tools = [{
     "type": "function",
@@ -291,6 +302,21 @@ tools = [{
             "required": ["pattern", "path"]
         }
     }
+},
+    {
+    "type": "function",
+    "function": {
+        "name": "glob",
+        "description": "Find files by glob pattern (e.g. **/*.py, src/**/*.ts). Returns matching file paths.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Glob pattern, e.g. **/*.py or src/**/*.ts"},
+                "path": {"type": "string", "description": "Root directory to search from (default: current directory)"}
+            },
+            "required": ["pattern"]
+        }
+    }
 }
 ]
 
@@ -325,5 +351,6 @@ tool_handler = {
     'run_sub_agent': run_sub_agent,
     'fetch_text': fetch_text,
     'web_search': web_search,
-    'grep': grep
+    'grep': grep,
+    'glob': glob
 }
