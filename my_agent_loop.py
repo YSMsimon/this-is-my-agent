@@ -4,6 +4,7 @@ from common.config import config
 from run_bash import tools, tool_handler, all_tools
 from to_do import ToDoManager
 from db import DB
+from command_manager import CommandManager
 import json
 import re
 import sys
@@ -21,7 +22,7 @@ class Agent:
         self._system_prompt = ''
         self._last_user_message = ''
 
-    KNOWLEDGE_TOOLS = {'fetch_text', 'fetch_html', 'read_file'}
+    KNOWLEDGE_TOOLS = {'fetch_text', 'read_file'}
 
     def _chunk(self, text: str, size: int = 1500, overlap: int = 200) -> list:
         chunks, start = [], 0
@@ -200,14 +201,13 @@ if __name__ == '__main__':
     db = DB()
     cfg = config()
     agent = Agent(cfg, tools=all_tools, db=db)
+    commands = CommandManager(db, agent.user_id)
     try:
         while True:
             user_input = input("User> ")
-            if user_input == "/help":
-                pass
-            if user_input == "/exit":
-                print("Exiting...")
-                break
+            if commands.is_command(user_input):
+                commands.handle(user_input)
+                continue
             agent.run(user_input)
     except KeyboardInterrupt:
         print("\nExiting...")

@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS llm_memory (
     user_id       TEXT NOT NULL,
     role          TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
     content       TEXT NOT NULL,
-    embedding     vector(1024),
     tool_call_id  TEXT,
     created_at    TIMESTAMP DEFAULT now()
 );
@@ -30,7 +29,7 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     source_ref  TEXT,
     chunk_index INT DEFAULT 0,
     content     TEXT NOT NULL,
-    embedding   vector(1024),
+    embedding   vector(768),
     created_at  TIMESTAMP DEFAULT now()
 );
 

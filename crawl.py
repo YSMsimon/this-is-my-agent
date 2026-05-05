@@ -2,12 +2,6 @@ import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 
-def fetch_html(url: str) -> str:
-    print(f"Fetching HTML for URL: {url}")
-    resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-    resp.raise_for_status()
-    return resp.text
-
 def fetch_text(url: str) -> str:
     print(f"Fetching text content for URL: {url}")
     html = fetch_html(url)

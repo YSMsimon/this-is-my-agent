@@ -70,13 +70,29 @@ class SkillManager:
         return f"**{skill.manifest.name}**\n{skill.manifest.description}\n\n{preview}\n..."
 
     def get_skill(self, name: str) -> Optional[str]:
-        print(f"Attempting to load skill: {name}")
         skill = self.skills.get(name)
         if not skill:
             available = ', '.join(self.skills.keys()) or 'none'
             return f"Skill '{name}' not found. Available: {available}"
-        print(f"Loading skill: {name}")
-        return f"# Skill: {skill.manifest.name}\n\n{skill.body}"
+
+        skill_dir = skill.manifest.path.parent
+        parts = [f"# Skill: {skill.manifest.name}\n\n{skill.body}"]
+
+        examples_path = skill_dir / "examples.md"
+        if examples_path.exists():
+            parts.append(f"\n---\n\n## Examples\n\n{examples_path.read_text(encoding='utf-8')}")
+
+        scripts = sorted((skill_dir / "scripts").glob("*")) if (skill_dir / "scripts").exists() else []
+        templates = sorted((skill_dir / "template").glob("*")) if (skill_dir / "template").exists() else []
+        if scripts or templates:
+            resource_lines = ["\n---\n\n## Available files (use read_file with full path)"]
+            for f in scripts:
+                resource_lines.append(f"- {f}")
+            for f in templates:
+                resource_lines.append(f"- {f}")
+            parts.append('\n'.join(resource_lines))
+
+        return '\n'.join(parts)
 
     def format_for_system_prompt(self) -> str:
         if not self.skills:

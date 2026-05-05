@@ -84,11 +84,13 @@ class DB:
         return [{'role': row[0], 'content': row[1]} for row in self.cursor.fetchall()]
 
     def get_user_profile(self, user_id: str) -> dict:
+        print(user_id)
         self.cursor.execute(
             "SELECT preferences FROM user_profiles WHERE user_id = %s",
             (user_id,)
         )
         result = self.cursor.fetchone()
+        print(result)
         return result[0] if result else {}
 
     def update_user_profile(self, user_id: str, preferences: dict):
@@ -97,6 +99,20 @@ class DB:
                VALUES (%s, %s, now()) ON CONFLICT (user_id)
                DO UPDATE SET preferences = %s, updated_at = now()""",
             (user_id, Json(preferences), Json(preferences))
+        )
+        self.conn.commit()
+
+    def delete_user_profile(self, user_id: str):
+        self.cursor.execute(
+            "DELETE FROM user_profiles WHERE user_id = %s",
+            (user_id,)
+        )
+        self.conn.commit()
+
+    def delete_user_history(self, user_id: str):
+        self.cursor.execute(
+            "DELETE FROM llm_memory WHERE user_id = %s",
+            (user_id,)
         )
         self.conn.commit()
 

@@ -3,7 +3,7 @@ from common.config import WORKDIR, config
 from to_do import PlanItem, ToDoManager
 from skill_manager import SkillManager
 from pathlib import Path
-from crawl import fetch_text, fetch_html, web_search
+from crawl import fetch_text, web_search
 
 _skill_manager = SkillManager(Path(__file__).parent / "skills")
 _skill_manager.load_skills()
@@ -90,60 +90,13 @@ def grep(pattern: str, path: str, recursive: bool = True) -> str:
             continue
     return '\n'.join(results) if results else "No matches found."
 
-def get_clipboard() -> str:
-    result = subprocess.run(['pbpaste'], capture_output=True, text=True)
-    return result.stdout if result.returncode == 0 else f"Error reading clipboard: {result.stderr}"
-
-def set_clipboard(text: str) -> str:
-    result = subprocess.run(['pbcopy'], input=text, capture_output=True, text=True)
-    return "Copied to clipboard." if result.returncode == 0 else f"Error writing clipboard: {result.stderr}"
-
 def run_sub_agent(prompt: str) -> str:
     from my_agent_loop import Agent
     print("Running sub-agent")
     subagent = Agent(config(), tools=tools)
     return subagent.run(prompt)
 
-skill_tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "list_skills",
-            "description": "List all available skills with their descriptions",
-            "parameters": {"type": "object", "properties": {}, "required": []}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "preview_skill",
-            "description": "Show a short preview (name, description, first few lines) of a skill",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "The skill name (e.g. 'algorithmic-art')"}
-                },
-                "required": ["name"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_skill",
-            "description": "Load the full SKILL.md instructions for a skill. Call this before attempting any skill-based task.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "The skill name (e.g. 'algorithmic-art')"}
-                },
-                "required": ["name"]
-            }
-        }
-    },
-]
-
-tools = skill_tools + [{
+tools = [{
     "type": "function",
     "function": {
         "name": "run_bash",
@@ -275,20 +228,6 @@ tools = skill_tools + [{
 {
     "type": "function",
     "function": {
-        "name": "fetch_html",
-        "description": "Fetch the raw HTML of a webpage",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "The full URL to fetch"}
-            },
-            "required": ["url"]
-        }
-    }
-},
-{
-    "type": "function",
-    "function": {
         "name": "web_search",
         "description": "Search the web using DuckDuckGo and return a list of results with title, url, and snippet",
         "parameters": {
@@ -300,11 +239,44 @@ tools = skill_tools + [{
             "required": ["query"]
         }
     }
-}
-]
-
-all_tools = tools + [
+},
 {
+        "type": "function",
+        "function": {
+            "name": "list_skills",
+            "description": "List all available skills with their descriptions",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "preview_skill",
+            "description": "Show a short preview (name, description, first few lines) of a skill",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "The skill name (e.g. 'algorithmic-art')"}
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_skill",
+            "description": "Load the full SKILL.md instructions for a skill. Call this before attempting any skill-based task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "The skill name (e.g. 'algorithmic-art')"}
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    {
     "type": "function",
     "function": {
         "name": "grep",
@@ -319,7 +291,11 @@ all_tools = tools + [
             "required": ["pattern", "path"]
         }
     }
-},{
+}
+]
+
+all_tools = tools + [
+{
     "type": "function",
     "function": {
         "name": "run_sub_agent",
@@ -348,7 +324,6 @@ tool_handler = {
     'get_skill': get_skill,
     'run_sub_agent': run_sub_agent,
     'fetch_text': fetch_text,
-    'fetch_html': fetch_html,
     'web_search': web_search,
     'grep': grep
 }
