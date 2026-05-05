@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS llm_memory (
     role          TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
     content       TEXT NOT NULL,
     tool_call_id  TEXT,
+    in_context    BOOLEAN NOT NULL DEFAULT true,
     created_at    TIMESTAMP DEFAULT now()
 );
 

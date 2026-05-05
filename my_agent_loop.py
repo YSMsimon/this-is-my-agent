@@ -196,7 +196,7 @@ if __name__ == '__main__':
     db = DB()
     cfg = config()
     agent = Agent(cfg, tools=all_tools, db=db)
-    commands = CommandManager(db, agent.user_id)
+    commands = CommandManager(db, agent.user_id, cfg)
     try:
         while True:
             user_input = input("User> ")

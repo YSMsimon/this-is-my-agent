@@ -16,19 +16,20 @@ class DB:
         return self.conn.cursor()
 
     def add_message(self, user_id: str, role: str, content: str,
-                    embedding: list = None, tool_call_id: str = None):
+                    embedding: list = None, tool_call_id: str = None,
+                    in_context: bool = True):
         with self._cursor() as cur:
             if embedding:
                 cur.execute(
-                    """INSERT INTO llm_memory (user_id, role, content, embedding, tool_call_id)
-                       VALUES (%s, %s, %s, %s::vector, %s)""",
-                    (user_id, role, content, self._vec(embedding), tool_call_id)
+                    """INSERT INTO llm_memory (user_id, role, content, embedding, tool_call_id, in_context)
+                       VALUES (%s, %s, %s, %s::vector, %s, %s)""",
+                    (user_id, role, content, self._vec(embedding), tool_call_id, in_context)
                 )
             else:
                 cur.execute(
-                    """INSERT INTO llm_memory (user_id, role, content, tool_call_id)
-                       VALUES (%s, %s, %s, %s)""",
-                    (user_id, role, content, tool_call_id)
+                    """INSERT INTO llm_memory (user_id, role, content, tool_call_id, in_context)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (user_id, role, content, tool_call_id, in_context)
                 )
         self.conn.commit()
 
@@ -36,7 +37,8 @@ class DB:
         with self._cursor() as cur:
             cur.execute(
                 """SELECT id, role, content, tool_call_id FROM llm_memory
-                   WHERE user_id = %s ORDER BY created_at DESC LIMIT %s""",
+                   WHERE user_id = %s AND in_context = true
+                   ORDER BY created_at DESC LIMIT %s""",
                 (user_id, limit)
             )
             rows = cur.fetchall()
@@ -113,6 +115,24 @@ class DB:
                 )
             return [{'source_type': r[0], 'source_ref': r[1], 'content': r[2]}
                     for r in cur.fetchall()]
+
+    def get_all_history(self, user_id: str) -> list:
+        with self._cursor() as cur:
+            cur.execute(
+                """SELECT role, content FROM llm_memory
+                   WHERE user_id = %s ORDER BY created_at ASC""",
+                (user_id,)
+            )
+            rows = cur.fetchall()
+        return [{'role': row[0], 'content': row[1]} for row in rows]
+
+    def set_out_of_context(self, user_id: str):
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE llm_memory SET in_context = false WHERE user_id = %s",
+                (user_id,)
+            )
+        self.conn.commit()
 
     def close(self):
         self.conn.close()

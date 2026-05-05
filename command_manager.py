@@ -1,18 +1,22 @@
 import sys
-
+from compact import Compactor
+from common.config import config
 
 COMMANDS = {
-    '/help':           'Show available commands',
-    '/exit':           'Exit the agent',
-    '/delete-profile': 'Delete your saved user profile',
-    '/profile':        'Show your current user profile',
-    '/clear-history':  'Delete all conversation history for your user',
+    '/help':              'Show available commands',
+    '/exit':              'Exit the agent',
+    '/delete-profile':    'Delete your saved user profile',
+    '/profile':           'Show your current user profile',
+    '/clear-history':     'Delete all conversation history for your user',
+    '/compact':           'Compact conversation history into a summary',
+    '/compact "<prompt>"':'Compact with extra instructions (e.g. /compact "focus on code decisions")',
 }
 
 class CommandManager:
-    def __init__(self, db, user_id: str):
+    def __init__(self, db, user_id: str, cfg: config):
         self.db = db
         self.user_id = user_id
+        self.cfg = cfg
 
     def is_command(self, text: str) -> bool:
         return text.strip().startswith('/')
@@ -57,6 +61,14 @@ class CommandManager:
                 print("History cleared.")
             else:
                 print("Cancelled.")
+            return True
+
+        if text.strip().lower().startswith('/compact'):
+            extra = text.strip()[len('/compact'):].strip().strip('"').strip("'") or None
+            print("Compacting history...")
+            compactor = Compactor(self.db, self.user_id, self.cfg)
+            summary = compactor.compact(extra_prompt=extra)
+            print(f"Done. Summary:\n{summary}")
             return True
 
         print(f"Unknown command: {cmd}. Type /help to see available commands.")

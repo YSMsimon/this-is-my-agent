@@ -12,6 +12,7 @@ class config:
         self.model = os.getenv('MODEL')
         self.embedding_model = os.getenv('EMBEDDING_MODEL')
         self.profile_model = os.getenv('PROFILE_MODEL')
+        self.compact_model = os.getenv('COMPACT_MODEL')
         self.system_prompt = """\
 You are an AI agent. Use tools to act — prefer tools over prose.
 
