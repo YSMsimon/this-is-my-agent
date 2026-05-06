@@ -36,8 +36,8 @@
 ### 1. 克隆项目并安装 Python 依赖
 
 ```bash
-git clone <你的仓库地址>
-cd custom-agent
+git clone https://github.com/YSMsimon/this-is-my-agent.git
+cd this-is-my-agent
 pip install -r requirements.txt
 ```
 
@@ -89,11 +89,12 @@ cp .env.exmaple .env
 编辑 `.env` 文件：
 
 ```env
-BASE_URL=http://localhost:11434
-MODEL=你的模型名称
-DATABASE_URL=postgresql://myuser:mypassword@localhost:5433/agent_memory
-EMBEDDING_MODEL=nomic-embed-text
-PROFILE_MODEL=你的轻量模型名称   # 可选，默认使用 MODEL
+BASE_URL = "http://localhost:11434"
+MODEL = "qwen3-coder-next:cloud"
+DATABASE_URL = "postgresql://myuser:mypassword@localhost:5433/agent_memory"
+EMBEDDING_MODEL = "nomic-embed-text"
+PROFILE_MODEL = "gemma4:31b-cloud"
+COMPACT_MODEL = "gemma4:31b-cloud"
 ```
 
 `PROFILE_MODEL` 用于后台画像提取，推荐使用较小较快的模型，因为这个任务只是结构化的 JSON 抽取。
@@ -105,7 +106,7 @@ PROFILE_MODEL=你的轻量模型名称   # 可选，默认使用 MODEL
 ### 终端（交互式命令行）
 
 ```bash
-python3 my_agent_loop.py
+python3 main.py
 ```
 
 在 `User>` 提示符后输入消息。输入 `/exit` 退出。
