@@ -36,8 +36,8 @@ Install these before anything else:
 ### 1. Clone and install Python dependencies
 
 ```bash
-git clone <your-repo-url>
-cd custom-agent
+git clone https://github.com/YSMsimon/this-is-my-agent.git
+cd this-is-my-agent
 pip install -r requirements.txt
 ```
 
@@ -89,11 +89,12 @@ cp .env.exmaple .env
 Edit `.env`:
 
 ```env
-BASE_URL=http://localhost:11434
-MODEL=your-model-name
-DATABASE_URL=postgresql://myuser:mypassword@localhost:5433/agent_memory
-EMBEDDING_MODEL=nomic-embed-text
-PROFILE_MODEL=your-lighter-model-name   # optional, falls back to MODEL
+BASE_URL = "http://localhost:11434"
+MODEL = "qwen3-coder-next:cloud"
+DATABASE_URL = "postgresql://myuser:mypassword@localhost:5433/agent_memory"
+EMBEDDING_MODEL = "nomic-embed-text"
+PROFILE_MODEL = "gemma4:31b-cloud"
+COMPACT_MODEL = "gemma4:31b-cloud"
 ```
 
 The `PROFILE_MODEL` is used for background profile extraction — a smaller/faster model works well here since it's just structured JSON extraction.
@@ -105,7 +106,7 @@ The `PROFILE_MODEL` is used for background profile extraction — a smaller/fast
 ### Terminal (REPL)
 
 ```bash
-python3 my_agent_loop.py
+python3 main.py
 ```
 
 Type your messages at the `User>` prompt. Use `/exit` to quit.
