@@ -5,9 +5,36 @@ from tools.manager import tools, tool_handler, all_tools
 from tools.todo import ToDoManager
 from memory.db import DB
 from agent.profile import ProfileManager
+from colorama import Fore, Style, init as colorama_init
+import itertools
 import json
-import sys
 import threading
+import time
+
+colorama_init(autoreset=False)
+
+
+class _Spinner:
+    _FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+    def __init__(self):
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join()
+        print('\r' + ' ' * 25 + '\r', end='', flush=True)
+
+    def _spin(self):
+        for frame in itertools.cycle(self._FRAMES):
+            if self._stop.is_set():
+                break
+            print(f'\r{Fore.CYAN}{frame} Thinking…{Style.RESET_ALL}', end='', flush=True)
+            time.sleep(0.08)
 
 
 class Agent:
@@ -101,13 +128,25 @@ class Agent:
 
         full_content = ''
         tool_calls = None
+        first_token = True
+        spinner = _Spinner()
+        spinner.start()
+
         for chunk in response:
             if chunk.message.content:
+                if first_token:
+                    spinner.stop()
+                    print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
+                    first_token = False
                 full_content += chunk.message.content
-                print(chunk.message.content, end='', flush=True, file=sys.stderr)
+                print(f'{Fore.GREEN}{chunk.message.content}{Style.RESET_ALL}', end='', flush=True)
             if chunk.message.tool_calls:
                 tool_calls = chunk.message.tool_calls
-        print(file=sys.stderr)
+
+        if not first_token:
+            print()
+        else:
+            spinner.stop()
 
         self._save_turn({'role': 'assistant', 'content': full_content})
         messages = messages + [{'role': 'assistant', 'content': full_content}]
@@ -119,6 +158,7 @@ class Agent:
             tool_call_id = getattr(tool_call, 'id', None)
             name = tool_call.function.name
             args = tool_call.function.arguments
+            print(f'{Fore.YELLOW}[tool: {name}]{Style.RESET_ALL}', flush=True)
             result = tool_handler[name](**args)
             if name in self.KNOWLEDGE_TOOLS and isinstance(result, str) and result.strip():
                 self._store_knowledge(args, result)

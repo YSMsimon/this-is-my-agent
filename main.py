@@ -3,6 +3,7 @@ from common.config import config
 from agent.loop import Agent
 from cli.commands import CommandManager
 from tools.manager import all_tools
+from colorama import Fore, Style
 
 if __name__ == '__main__':
     db = DB()
@@ -15,7 +16,10 @@ if __name__ == '__main__':
             if commands.is_command(user_input):
                 commands.handle(user_input)
                 continue
-            agent.run(user_input)
+            try:
+                agent.run(user_input)
+            except Exception as e:
+                print(f'{Fore.RED}Error: {e}{Style.RESET_ALL}')
     except KeyboardInterrupt:
         print("\nExiting...")
         db.close()
