@@ -1,13 +1,4 @@
 {
-  "agents": {
-    "my-agent": {
-      "label": "My Custom Agent",
-      "command": "python3",
-      "args": ["/Users/simon/Desktop/custom-agent/acp_agent.py"]
-    }
-  },
-  "agent": {
-    "preset": "my-agent",
-    "cwd": "/Users/simon/Desktop/custom-agent"
-  }
+  "agent": "python3 /Users/simon/Desktop/this-is-my-agent/acp_agent.py",
+  "cwd": "/Users/simon/Desktop/this-is-my-agent"
 }

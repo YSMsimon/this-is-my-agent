@@ -6,6 +6,34 @@
 
 ---
 
+## 项目结构
+
+```
+custom-agent/
+├── agent/              # 核心智能体逻辑
+│   ├── loop.py         # 主循环（LLM 调用、工具执行、RAG 注入）
+│   ├── profile.py      # 后台用户画像提取
+│   └── compact.py      # 对话历史压缩
+├── memory/             # 数据库层
+│   └── db.py           # PostgreSQL + pgvector（消息、画像、知识库）
+├── tools/              # 工具实现与注册
+│   ├── manager.py      # 工具注册表（bash、文件、搜索、技能等）
+│   ├── crawl.py        # 网页抓取与 DuckDuckGo 搜索
+│   ├── skill_manager.py# 技能加载器
+│   └── todo.py         # 会话内任务追踪
+├── cli/                # 命令行入口
+│   └── commands.py     # 斜杠命令（/help、/profile、/compact 等）
+├── common/             # 共享配置
+│   └── config.py       # 环境变量加载
+├── skills/             # 技能定义（SKILL.md + 示例 + 脚本 + 模板）
+├── main.py             # 启动终端交互的入口文件
+├── acp_agent.py        # 微信 ACP 服务入口
+├── init.sql            # 数据库表结构（Docker 首次启动时自动执行）
+└── Docker-compose.yml
+```
+
+---
+
 ## 工作原理
 
 - 对话内容以向量嵌入的形式存储在 PostgreSQL 中，支持语义记忆召回
@@ -117,33 +145,30 @@ python3 main.py
 
 按以下步骤启用微信 ACP 桥接：
 
-**1. 更新 `wechat-acp.config.json`**，填入你自己的路径：
+**1. 编辑 `wechat-acp.config.json`**，将占位路径替换为你自己的实际路径：
 
 ```json
 {
-  "agents": {
-    "my-agent": {
-      "label": "My Custom Agent",
-      "command": "python3",
-      "args": ["/你的/绝对/路径/custom-agent/acp_agent.py"]
-    }
-  },
-  "agent": {
-    "preset": "my-agent",
-    "cwd": "/你的/绝对/路径/custom-agent"
-  }
+  "agent": "python3 /你的/绝对/路径/this-is-my-agent/acp_agent.py",
+  "cwd": "/你的/绝对/路径/this-is-my-agent"
 }
 ```
 
-将 `/你的/绝对/路径/custom-agent` 替换为本项目在你机器上的实际路径：
-
-- **Mac/Linux**：在项目目录中执行 `pwd` 获取路径
-- **Windows**：使用正斜杠或转义反斜杠，例如 `C:/Users/yourname/custom-agent`
+- **Mac/Linux**：在项目目录中执行 `pwd` 获取绝对路径
+- **Windows**：将 `python3` 改为 `python`，并使用正斜杠，例如 `C:/Users/yourname/this-is-my-agent`
+- `cwd` 是必须的 —— Python 需要通过它来解析 `agent/`、`memory/`、`tools/` 等包的导入路径
 
 **2. 启动 ACP 桥接服务：**
 
-```bash
-npx wechat-acp wechat-acp.config.json
-```
+- **Mac/Linux：**
+  ```bash
+  ./start-wechat-acp.sh
+  ```
+- **Windows（PowerShell）：**
+  ```powershell
+  .\start-wechat-acp.ps1
+  ```
 
-`npx` 需要安装 Node.js 才能使用。执行后将启动 ACP 服务并将你的微信账号接入智能体。
+脚本会自动从 `wechat-acp.config.json` 中读取你的路径配置。
+
+`npx` 需要安装 Node.js 才能使用。

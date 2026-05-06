@@ -6,6 +6,34 @@ A local AI agent with persistent memory, semantic search, user profile tracking,
 
 ---
 
+## Project Structure
+
+```
+custom-agent/
+├── agent/              # Core agent logic
+│   ├── loop.py         # Main agent loop (LLM calls, tool execution, RAG injection)
+│   ├── profile.py      # Background user profile extraction
+│   └── compact.py      # Conversation history compaction
+├── memory/             # Database layer
+│   └── db.py           # PostgreSQL + pgvector (messages, profiles, knowledge base)
+├── tools/              # Tool implementations and schemas
+│   ├── manager.py      # Tool registry, bash/file/search/skill tools
+│   ├── crawl.py        # Web fetch and DuckDuckGo search
+│   ├── skill_manager.py# Skill loader
+│   └── todo.py         # In-session task tracking
+├── cli/                # CLI entry point
+│   └── commands.py     # Slash commands (/help, /profile, /compact, etc.)
+├── common/             # Shared config
+│   └── config.py       # Environment variable loading
+├── skills/             # Skill definitions (SKILL.md + examples + scripts + templates)
+├── main.py             # Run this to start the terminal REPL
+├── acp_agent.py        # WeChat ACP server entry point
+├── init.sql            # Database schema (auto-run by Docker on first start)
+└── Docker-compose.yml
+```
+
+---
+
 ## How it works
 
 - Conversations are stored in PostgreSQL with vector embeddings for semantic memory recall
@@ -117,33 +145,30 @@ Type your messages at the `User>` prompt. Use `/exit` to quit.
 
 Enable the WeChat ACP bridge so you can chat with your agent through WeChat:
 
-**1. Update `wechat-acp.config.json`** with your own paths:
+**1. Edit `wechat-acp.config.json`** and replace the placeholder paths with your own:
 
 ```json
 {
-  "agents": {
-    "my-agent": {
-      "label": "My Custom Agent",
-      "command": "python3",
-      "args": ["/YOUR/ABSOLUTE/PATH/custom-agent/acp_agent.py"]
-    }
-  },
-  "agent": {
-    "preset": "my-agent",
-    "cwd": "/YOUR/ABSOLUTE/PATH/custom-agent"
-  }
+  "agent": "python3 /YOUR/ABSOLUTE/PATH/this-is-my-agent/acp_agent.py",
+  "cwd": "/YOUR/ABSOLUTE/PATH/this-is-my-agent"
 }
 ```
 
-Replace `/YOUR/ABSOLUTE/PATH/custom-agent` with the actual path to this project on your machine.
-
-- On **Mac/Linux**: run `pwd` inside the project folder to get the path
-- On **Windows**: use forward slashes or escape backslashes, e.g. `C:/Users/yourname/custom-agent`
+- On **Mac/Linux**: run `pwd` inside the project folder to get your absolute path
+- On **Windows**: use `python` instead of `python3`, and forward slashes: `C:/Users/yourname/this-is-my-agent`
+- `cwd` is required so Python can resolve the `agent/`, `memory/`, and `tools/` package imports correctly
 
 **2. Start the ACP bridge:**
 
-```bash
-npx wechat-acp wechat-acp.config.json
-```
+- **Mac/Linux:**
+  ```bash
+  ./start-wechat-acp.sh
+  ```
+- **Windows (PowerShell):**
+  ```powershell
+  .\start-wechat-acp.ps1
+  ```
 
-Node.js must be installed for `npx` to work. This will launch the ACP server and connect your WeChat account to the agent.
+The scripts read your path from `wechat-acp.config.json` automatically.
+
+Node.js must be installed for `npx` to work.
