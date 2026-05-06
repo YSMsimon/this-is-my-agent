@@ -12,13 +12,13 @@ class PlanItem(BaseModel):
     content: str
     status: PlanItemStatus
     parent: Optional[str] = None
-    
-    
+
+
 class ToDoManager:
     def __init__(self, max_items: int = 12):
         self.items: List[PlanItem] = []
         self.max_items = max_items
-    
+
     def update(self, items: List[PlanItem]) -> str:
         if len(items) > self.max_items:
             raise ValueError(f"Keep the session plan shorter than {self.max_items}")
@@ -43,7 +43,7 @@ class ToDoManager:
         lines.append(f"\n({completed}/{len(self.items)}) completed")
         return "\n".join(lines)
 
-    def to_do(self, items:List[PlanItem]) -> str:
+    def to_do(self, items: List[PlanItem]) -> str:
         print("Updating to-do list...")
         try:
             if isinstance(items, str):
@@ -57,5 +57,3 @@ class ToDoManager:
         except Exception as e:
             print(f"Error updating to-do list: {e}")
             return f"Error updating to-do list: {e}"
-
-    

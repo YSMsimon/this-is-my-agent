@@ -1,12 +1,11 @@
 from ollama import Client
 from typing import List, Dict, Optional
 from common.config import config
-from run_bash import tools, tool_handler, all_tools
-from to_do import ToDoManager
-from db import DB
-from command_manager import CommandManager
+from tools.manager import tools, tool_handler, all_tools
+from tools.todo import ToDoManager
+from memory.db import DB
+from agent.profile import ProfileManager
 import json
-import re
 import sys
 import threading
 
@@ -19,6 +18,7 @@ class Agent:
         self.db = db
         self.user_id = user_id
         self.client = Client(host=cfg.base_url)
+        self._profile = ProfileManager(db, user_id, cfg)
         self._system_prompt = ''
         self._last_user_message = ''
 
@@ -49,7 +49,7 @@ class Agent:
         return self.config.system_prompt.format(user_profile=profile_text)
 
     def _build_messages(self, user_message: str) -> List[Dict]:
-        
+
         history, _ = self.db.get_recent_history(self.user_id, limit=10000)
 
         embedding = self.get_embedding(user_message)
@@ -67,71 +67,6 @@ class Agent:
         messages.append({'role': 'user', 'content': user_message})
         return messages
 
-    def _update_profile(self, user_message: str, assistant_response: str):
-        existing = self.db.get_user_profile(self.user_id)
-
-        base_prompt = f"""You are a profile extraction engine. Extract facts the user explicitly stated and merge them into the existing profile JSON.
-
-RULES:
-- Only include fields that have real extracted values from this conversation.
-- NEVER add a field just because it exists in the schema — only add it if the user stated a value.
-- NEVER use null, empty strings, or placeholder text. If you don't have a value, omit the field entirely.
-- Preserve all existing fields. Overwrite only if the user explicitly corrected something.
-- For lists: append new unique items, never duplicate.
-- Output ONLY raw JSON. No markdown, no code fences, no commentary.
-
-AVAILABLE FIELDS (only use the ones you have real values for):
-identity: name, age, location, timezone, occupation, education
-professional_profile: job_title, experience_years, background_summary, skills([name,level,years]), languages[], frameworks[], tools[]
-online_presence: github_username, github_repos([name,description,url]), website, linkedin, youtube_channel, twitter
-current_projects: [name, description, status, tech_stack[], goals[]]
-learning_profile: learning_goals[], current_focus, preferred_learning_style[], difficulty_preference
-interests: technical[], business[], personal[]
-preferences: editor, os, communication_style, response_format[], likes[], dislikes[]
-goals: short_term[], long_term[]
-
-EXAMPLES:
-
-Short — user only mentioned their name:
-{{"identity": {{"name": "Simon"}}}}
-
-Medium — user mentioned name, languages, and GitHub:
-{{"identity": {{"name": "Simon"}}, "professional_profile": {{"languages": ["python", "typescript"]}}, "online_presence": {{"github_username": "YSMsimon"}}}}
-
-Long — user shared many details:
-{{"identity": {{"name": "Simon", "location": "Canada"}}, "professional_profile": {{"job_title": "backend developer", "languages": ["python", "go"], "frameworks": ["fastapi", "react"], "tools": ["docker", "postgresql"]}}, "online_presence": {{"github_username": "YSMsimon"}}, "current_projects": [{{"name": "ai-agent", "description": "local AI agent with memory", "status": "active", "tech_stack": ["python", "ollama", "postgresql"]}}], "learning_profile": {{"current_focus": "agent architecture"}}, "goals": {{"short_term": ["build fullstack apps"], "long_term": ["launch SaaS products"]}}}}
-
-EXISTING PROFILE:
-{json.dumps(existing) if existing else "{{}}"}
-
-CONVERSATION:
-USER: {user_message}
-ASSISTANT: {assistant_response}
-
-UPDATED PROFILE JSON:"""
-
-        messages = [{'role': 'user', 'content': base_prompt}]
-        max_retries = 3
-        for _ in range(max_retries):
-            resp = self.client.chat(model=self.config.profile_model, messages=messages)
-            text = resp.message.content.strip()
-            match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
-            if match:
-                text = match.group(1).strip()
-            try:
-                self.db.update_user_profile(self.user_id, json.loads(text))
-                return
-            except json.JSONDecodeError as e:
-                error_feedback = (
-                    f"Your previous response failed JSON parsing.\n"
-                    f"Error: {e}\n"
-                    f"Occurred at character position: {e.pos if hasattr(e, 'pos') else 'unknown'}\n"
-                    f"Raw response that failed:\n{text}\n\n"
-                    f"Fix the JSON and return only a valid raw JSON object. No nulls, no placeholders, only fields with real values."
-                )
-                messages.append({'role': 'assistant', 'content': resp.message.content})
-                messages.append({'role': 'user', 'content': error_feedback})
-
     def _save_turn(self, new_messages: Dict):
         role = new_messages.get('role')
         content = new_messages.get('content')
@@ -142,7 +77,7 @@ UPDATED PROFILE JSON:"""
             self._last_user_message = content
         elif role == 'assistant' and self._last_user_message:
             threading.Thread(
-                target=self._update_profile,
+                target=self._profile.update,
                 args=(self._last_user_message, content),
                 daemon=True
             ).start()
@@ -190,20 +125,3 @@ UPDATED PROFILE JSON:"""
             self._save_turn({'role': 'tool', 'content': f"Name: {name}, Arguments: {args}, Result: {result}", 'tool_call_id': tool_call_id})
             messages.append({'role': 'tool', 'content': f"Name: {name}, Arguments: {args}, Result: {result}", 'tool_call_id': tool_call_id})
         return self._execute(messages)
-
-
-if __name__ == '__main__':
-    db = DB()
-    cfg = config()
-    agent = Agent(cfg, tools=all_tools, db=db)
-    commands = CommandManager(db, agent.user_id, cfg)
-    try:
-        while True:
-            user_input = input("User> ")
-            if commands.is_command(user_input):
-                commands.handle(user_input)
-                continue
-            agent.run(user_input)
-    except KeyboardInterrupt:
-        print("\nExiting...")
-        db.close()

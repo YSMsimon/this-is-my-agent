@@ -1,5 +1,5 @@
 import sys
-from compact import Compactor
+from agent.compact import Compactor
 from common.config import config
 
 COMMANDS = {

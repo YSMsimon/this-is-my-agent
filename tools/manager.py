@@ -1,13 +1,14 @@
 import subprocess
 from common.config import WORKDIR, config
-from to_do import PlanItem, ToDoManager
-from skill_manager import SkillManager
+from tools.todo import PlanItem, ToDoManager
+from tools.skill_manager import SkillManager
+from tools.crawl import fetch_text, web_search
 from pathlib import Path
-from crawl import fetch_text, web_search
 
-_skill_manager = SkillManager(Path(__file__).parent / "skills")
+_skill_manager = SkillManager(Path(__file__).parent.parent / "skills")
 _skill_manager.load_skills()
-def run_bash(command:str)-> str:
+
+def run_bash(command: str) -> str:
     if 'rm' in command or 'sudo' in command:
         while True:
             user_input = input("Warning: Command contains 'rm' or 'sudo'. Are you sure you want to run this? (Y/N) ")
@@ -19,18 +20,18 @@ def run_bash(command:str)-> str:
         print(f"Running command: {command}")
         result = subprocess.run(
             command,
-            shell = True,
-            cwd = WORKDIR,
-            capture_output= True,
+            shell=True,
+            cwd=WORKDIR,
+            capture_output=True,
             text=True,
             timeout=120
-            )
+        )
     except subprocess.TimeoutExpired:
         return 'Error: Timeout(120ms)'
-    
-    return(result.stdout + result.stderr).strip() or "(no output)"
 
-def read_file(file_path:str)-> str:
+    return (result.stdout + result.stderr).strip() or "(no output)"
+
+def read_file(file_path: str) -> str:
     try:
         print(f"Reading file: {file_path}")
         with open(file_path, "r") as f:
@@ -38,7 +39,7 @@ def read_file(file_path:str)-> str:
     except Exception as e:
         return f"Error reading file: {e}"
 
-def write_file(file_path:str, content:str)-> str:
+def write_file(file_path: str, content: str) -> str:
     try:
         print(f"Writing file: {file_path}")
         with open(file_path, 'w', encoding='utf-8') as file:
@@ -47,7 +48,7 @@ def write_file(file_path:str, content:str)-> str:
         return f"Error writing file: {e}"
     return f"File {file_path} written successfully."
 
-def edit_file(file_path:str, old:str, new:str) -> str:
+def edit_file(file_path: str, old: str, new: str) -> str:
     try:
         print(f"Editing file: {file_path}")
         with open(file_path, "r") as f:
@@ -59,7 +60,7 @@ def edit_file(file_path:str, old:str, new:str) -> str:
         return f"Error editing file: {e}"
     return f"File {file_path} edited successfully."
 
-def to_do(items:list[PlanItem]) -> str:
+def to_do(items: list[PlanItem]) -> str:
     manager = ToDoManager()
     return manager.to_do(items)
 
@@ -87,7 +88,7 @@ def grep(pattern: str, path: str, recursive: bool = True) -> str:
                 if _re.search(pattern, line):
                     results.append(f"{f}:{i}: {line.strip()}")
         except Exception:
-            return f"Error reading file {f}"
+            continue
     return '\n'.join(results) if results else "No matches found."
 
 def glob(pattern: str, path: str = '.') -> str:
@@ -101,7 +102,7 @@ def glob(pattern: str, path: str = '.') -> str:
         return f"Error: {e}"
 
 def run_sub_agent(prompt: str) -> str:
-    from my_agent_loop import Agent
+    from agent.loop import Agent
     print("Running sub-agent")
     subagent = Agent(config(), tools=tools)
     return subagent.run(prompt)
@@ -112,11 +113,11 @@ tools = [{
     "function": {
         "name": "run_bash",
         "description": "Run a bash command",
-        "parameters":{
-            "type":"object",
-            "properties":{
-                "command":{
-                    "type":"string",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
                     "description": "The command to run"
                 }
             },
@@ -129,11 +130,11 @@ tools = [{
     "function": {
         "name": "read_file",
         "description": "Read the contents of a file",
-        "parameters":{
-            "type":"object",
-            "properties":{
-                "file_path":{
-                    "type":"string",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
                     "description": "The path to the file to read"
                 }
             },
@@ -146,15 +147,15 @@ tools = [{
     "function": {
         "name": "write_file",
         "description": "Write content to a file",
-        "parameters":{
-            "type":"object",
-            "properties":{
-                "file_path":{
-                    "type":"string",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
                     "description": "The path to the file to write"
                 },
-                "content":{
-                    "type":"string",
+                "content": {
+                    "type": "string",
                     "description": "The content to write to the file"
                 }
             },
@@ -167,19 +168,19 @@ tools = [{
     "function": {
         "name": "edit_file",
         "description": "Edit the contents of a file",
-        "parameters":{
-            "type":"object",
-            "properties":{
-                "file_path":{
-                    "type":"string",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
                     "description": "The path to the file to edit"
                 },
-                "old":{
-                    "type":"string",
+                "old": {
+                    "type": "string",
                     "description": "The text to replace"
                 },
-                "new":{
-                    "type":"string",
+                "new": {
+                    "type": "string",
                     "description": "The text to replace it with"
                 }
             },
@@ -192,26 +193,26 @@ tools = [{
     "function": {
         "name": "to_do",
         "description": "Update the to-do list",
-        "parameters":{
-            "type":"object",
-            "properties":{
-                "items":{
-                    "type":"array",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
                     "description": "The list of to-do items, each with content, status, and optional parent",
-                    "items":{
-                        "type":"object",
-                        "properties":{
-                            "content":{
-                                "type":"string",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
                                 "description": "The content of the to-do item"
                             },
-                            "status":{
-                                "type":"string",
+                            "status": {
+                                "type": "string",
                                 "enum": ["pending", "in_progress", "completed"],
                                 "description": "The status of the to-do item (pending, in_progress, completed)"
                             },
-                            "parent":{
-                                "type":"string",
+                            "parent": {
+                                "type": "string",
                                 "description": "The content of the parent to-do item, if this is a subtask"
                             }
                         }
@@ -252,42 +253,42 @@ tools = [{
     }
 },
 {
-        "type": "function",
-        "function": {
-            "name": "list_skills",
-            "description": "List all available skills with their descriptions",
-            "parameters": {"type": "object", "properties": {}, "required": []}
+    "type": "function",
+    "function": {
+        "name": "list_skills",
+        "description": "List all available skills with their descriptions",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "preview_skill",
+        "description": "Show a short preview (name, description, first few lines) of a skill",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The skill name (e.g. 'algorithmic-art')"}
+            },
+            "required": ["name"]
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "preview_skill",
-            "description": "Show a short preview (name, description, first few lines) of a skill",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "The skill name (e.g. 'algorithmic-art')"}
-                },
-                "required": ["name"]
-            }
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "get_skill",
+        "description": "Load the full SKILL.md instructions for a skill. Call this before attempting any skill-based task.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The skill name (e.g. 'algorithmic-art')"}
+            },
+            "required": ["name"]
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_skill",
-            "description": "Load the full SKILL.md instructions for a skill. Call this before attempting any skill-based task.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "The skill name (e.g. 'algorithmic-art')"}
-                },
-                "required": ["name"]
-            }
-        }
-    },
-    {
+    }
+},
+{
     "type": "function",
     "function": {
         "name": "grep",
@@ -303,7 +304,7 @@ tools = [{
         }
     }
 },
-    {
+{
     "type": "function",
     "function": {
         "name": "glob",
@@ -317,20 +318,18 @@ tools = [{
             "required": ["pattern"]
         }
     }
-}
-]
+}]
 
-all_tools = tools + [
-{
+all_tools = tools + [{
     "type": "function",
     "function": {
         "name": "run_sub_agent",
         "description": "Run a sub-agent with a given prompt",
-        "parameters":{
-            "type":"object",
-            "properties":{
-                "prompt":{
-                    "type":"string",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
                     "description": "The prompt to run the sub-agent with"
                 }
             },

@@ -18,9 +18,9 @@ from acp.interfaces import Client
 from acp.schema import ClientCapabilities, Implementation
 
 from common.config import config
-from db import DB
-from run_bash import all_tools
-from my_agent_loop import Agent as CustomAgent
+from memory.db import DB
+from tools.manager import all_tools
+from agent.loop import Agent as CustomAgent
 
 cfg = config()
 db = DB()
