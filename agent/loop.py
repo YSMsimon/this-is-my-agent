@@ -38,14 +38,15 @@ class _Spinner:
 
 
 class Agent:
-    def __init__(self, cfg: config, tools: Optional[List] = tools, db: DB = None, user_id: str = 'default_user'):
+    def __init__(self, cfg: config, tools: Optional[List] = tools, db: DB = None, user_id: str = 'default_user', is_subagent: bool = False):
         self.config = cfg
         self.tools = tools
         self.todo_manager = ToDoManager()
         self.db = db
         self.user_id = user_id
+        self.is_subagent = is_subagent
         self.client = Client(host=cfg.base_url)
-        self._profile = ProfileManager(db, user_id, cfg)
+        self._profile = ProfileManager(db, user_id, cfg) if not is_subagent else None
         self._system_prompt = ''
         self._last_user_message = ''
 
@@ -71,11 +72,15 @@ class Agent:
         return embedding
 
     def _build_system_prompt(self) -> str:
+        if self.is_subagent:
+            return self.config.subagent_system_prompt
         profile = self.db.get_user_profile(self.user_id)
         profile_text = json.dumps(profile, indent=2) if profile else "No profile yet."
         return self.config.system_prompt.format(user_profile=profile_text)
 
     def _build_messages(self, user_message: str) -> List[Dict]:
+        if self.is_subagent:
+            return [{'role': 'user', 'content': user_message}]
 
         history, _ = self.db.get_recent_history(self.user_id, limit=10000)
 
@@ -95,6 +100,9 @@ class Agent:
         return messages
 
     def _save_turn(self, new_messages: Dict):
+        if self.is_subagent:
+            return
+
         role = new_messages.get('role')
         content = new_messages.get('content')
         tool_call_id = new_messages.get('tool_call_id')

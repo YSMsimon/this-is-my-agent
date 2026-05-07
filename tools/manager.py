@@ -85,7 +85,8 @@ def grep(pattern: str, path: str, recursive: bool = True) -> str:
             continue
         try:
             for i, line in enumerate(f.read_text(errors='ignore').splitlines(), 1):
-                if _re.search(pattern, line):
+                line = line.replace('\x00', '')
+                if line and _re.search(pattern, line):
                     results.append(f"{f}:{i}: {line.strip()}")
         except Exception:
             continue
@@ -104,7 +105,7 @@ def glob(pattern: str, path: str = '.') -> str:
 def run_sub_agent(prompt: str) -> str:
     from agent.loop import Agent
     print("Running sub-agent")
-    subagent = Agent(config(), tools=tools)
+    subagent = Agent(config(), tools=tools, is_subagent=True)
     return subagent.run(prompt)
 
 
@@ -185,41 +186,6 @@ tools = [{
                 }
             },
             "required": ["file_path", "old", "new"]
-        }
-    }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "to_do",
-        "description": "Update the to-do list",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "description": "The list of to-do items, each with content, status, and optional parent",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "content": {
-                                "type": "string",
-                                "description": "The content of the to-do item"
-                            },
-                            "status": {
-                                "type": "string",
-                                "enum": ["pending", "in_progress", "completed"],
-                                "description": "The status of the to-do item (pending, in_progress, completed)"
-                            },
-                            "parent": {
-                                "type": "string",
-                                "description": "The content of the parent to-do item, if this is a subtask"
-                            }
-                        }
-                    }
-                }
-            },
-            "required": ["items"]
         }
     }
 },
@@ -336,7 +302,42 @@ all_tools = tools + [{
             "required": ["prompt"]
         }
     }
-}]
+},
+{
+    "type": "function",
+    "function": {
+        "name": "to_do",
+        "description": "Update the to-do list",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "description": "The list of to-do items, each with content, status, and optional parent",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "The content of the to-do item"
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["pending", "in_progress", "completed"],
+                                "description": "The status of the to-do item (pending, in_progress, completed)"
+                            },
+                            "parent": {
+                                "type": "string",
+                                "description": "The content of the parent to-do item, if this is a subtask"
+                            }
+                        }
+                    }
+                }
+            },
+            "required": ["items"]
+        }
+    }
+},]
 
 tool_handler = {
     'run_bash': run_bash,
