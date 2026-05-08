@@ -1,6 +1,6 @@
-import asyncio
 import sys
 import json
+from aioconsole import ainput, aprint
 from agent.compact import Compactor
 from common.config import config
 
@@ -40,9 +40,7 @@ class CommandManager:
             sys.exit(0)
 
         if cmd == '/delete-profile':
-            confirm = await asyncio.to_thread(
-                input, "Delete your user profile? This cannot be undone. (Y/N): "
-            )
+            confirm = await ainput("Delete your user profile? This cannot be undone. (Y/N): ")
             if confirm.strip().lower() == 'y':
                 await self.db.delete_user_profile(self.user_id)
                 print("Profile deleted.")
@@ -59,9 +57,7 @@ class CommandManager:
             return True
 
         if cmd == '/clear-history':
-            confirm = await asyncio.to_thread(
-                input, "Delete all conversation history? This cannot be undone. (Y/N): "
-            )
+            confirm = await ainput("Delete all conversation history? This cannot be undone. (Y/N): ")
             if confirm.strip().lower() == 'y':
                 await self.db.delete_user_history(self.user_id)
                 print("History cleared.")
@@ -74,7 +70,7 @@ class CommandManager:
             print("Compacting history...")
             compactor = Compactor(self.db, self.user_id, self.cfg)
             summary = await compactor.compact(extra_prompt=extra)
-            print(f"Done. Summary:\n{summary}")
+            await aprint(f"Done. Summary:\n{summary}")
             return True
 
         print(f"Unknown command: {cmd}. Type /help to see available commands.")

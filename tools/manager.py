@@ -1,4 +1,5 @@
 import asyncio
+from aioconsole import ainput
 from common.config import WORKDIR, config
 from tools.todo import PlanItem, ToDoManager
 from tools.skill_manager import SkillManager
@@ -12,9 +13,7 @@ _skill_manager.load_skills()
 async def run_bash(command: str) -> str:
     if 'rm' in command or 'sudo' in command:
         while True:
-            user_input = await asyncio.to_thread(
-                input, "Warning: Command contains 'rm' or 'sudo'. Are you sure you want to run this? (Y/N) "
-            )
+            user_input = await ainput("Warning: Command contains 'rm' or 'sudo'. Are you sure you want to run this? (Y/N) ")
             if user_input.lower() == 'y':
                 break
             else:
