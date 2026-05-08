@@ -1,7 +1,6 @@
 #Node js required for npx
 import asyncio
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import uuid4
 
@@ -23,10 +22,8 @@ from tools.manager import all_tools
 from agent.loop import Agent as CustomAgent
 
 cfg = config()
-db = DB()
-executor = ThreadPoolExecutor(max_workers=4)
+db: DB = None
 
-# session_id -> CustomAgent; lives for the lifetime of this process
 _sessions: dict[str, CustomAgent] = {}
 
 
@@ -71,9 +68,7 @@ class MyAgent(Agent):
         agent = _get_session(session_id)
 
         try:
-            loop = asyncio.get_running_loop()
-            reply = await loop.run_in_executor(executor, agent.run, user_text)
-
+            reply = await agent.run(user_text)
             if reply:
                 await self._conn.session_update(
                     session_id=session_id,
@@ -95,6 +90,8 @@ class MyAgent(Agent):
 
 
 async def main() -> None:
+    global db
+    db = await DB.create()
     await run_agent(MyAgent())
 
 

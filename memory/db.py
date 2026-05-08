@@ -1,148 +1,134 @@
-import psycopg2
-import psycopg2.pool
-from psycopg2.extras import Json
-from contextlib import contextmanager
+import asyncpg
+import json
 from dotenv import load_dotenv
 import os
 
 
 class DB:
     def __init__(self):
+        raise RuntimeError("Use await DB.create() to instantiate")
+
+    @classmethod
+    async def create(cls):
         load_dotenv()
-        self._pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=1, maxconn=10, dsn=os.getenv('DATABASE_URL')
-        )
+        self = cls.__new__(cls)
+        self._pool = await asyncpg.create_pool(dsn=os.getenv('DATABASE_URL'))
+        return self
 
     def _vec(self, embedding: list) -> str:
         if not embedding:
             raise ValueError("embedding must have at least 1 dimension")
         return '[' + ','.join(map(str, embedding)) + ']'
 
-    @contextmanager
-    def _cursor(self):
-        conn = self._pool.getconn()
-        try:
-            with conn.cursor() as cur:
-                yield cur
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            self._pool.putconn(conn)
-
-    def add_message(self, user_id: str, role: str, content: str,
-                    embedding: list = None, tool_call_id: str = None,
-                    in_context: bool = True):
-        with self._cursor() as cur:
+    async def add_message(self, user_id: str, role: str, content: str,
+                          embedding: list = None, tool_call_id: str = None,
+                          in_context: bool = True):
+        async with self._pool.acquire() as conn:
             if embedding:
-                cur.execute(
+                await conn.execute(
                     """INSERT INTO llm_memory (user_id, role, content, embedding, tool_call_id, in_context)
-                       VALUES (%s, %s, %s, %s::vector, %s, %s)""",
-                    (user_id, role, content, self._vec(embedding), tool_call_id, in_context)
+                       VALUES ($1, $2, $3, $4::vector, $5, $6)""",
+                    user_id, role, content, self._vec(embedding), tool_call_id, in_context
                 )
             else:
-                cur.execute(
+                await conn.execute(
                     """INSERT INTO llm_memory (user_id, role, content, tool_call_id, in_context)
-                       VALUES (%s, %s, %s, %s, %s)""",
-                    (user_id, role, content, tool_call_id, in_context)
+                       VALUES ($1, $2, $3, $4, $5)""",
+                    user_id, role, content, tool_call_id, in_context
                 )
 
-    def get_recent_history(self, user_id: str, limit: int = 20) -> tuple:
-        with self._cursor() as cur:
-            cur.execute(
+    async def get_recent_history(self, user_id: str, limit: int = 20) -> tuple:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
                 """SELECT id, role, content, tool_call_id FROM llm_memory
-                   WHERE user_id = %s AND in_context = true
-                   ORDER BY created_at DESC LIMIT %s""",
-                (user_id, limit)
+                   WHERE user_id = $1 AND in_context = true
+                   ORDER BY created_at DESC LIMIT $2""",
+                user_id, limit
             )
-            rows = cur.fetchall()
-        ids = [row[0] for row in rows]
+        ids = [row['id'] for row in rows]
         messages = []
         for row in reversed(rows):
-            msg = {'role': row[1], 'content': row[2]}
-            if row[3]:
-                msg['tool_call_id'] = row[3]
+            msg = {'role': row['role'], 'content': row['content']}
+            if row['tool_call_id']:
+                msg['tool_call_id'] = row['tool_call_id']
             messages.append(msg)
         return messages, ids
 
-    def get_user_profile(self, user_id: str) -> dict:
-        with self._cursor() as cur:
-            cur.execute(
-                "SELECT preferences FROM user_profiles WHERE user_id = %s",
-                (user_id,)
+    async def get_user_profile(self, user_id: str) -> dict:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT preferences FROM user_profiles WHERE user_id = $1",
+                user_id
             )
-            result = cur.fetchone()
-        return result[0] if result else {}
+        return json.loads(row['preferences']) if row else {}
 
-    def update_user_profile(self, user_id: str, preferences: dict):
-        with self._cursor() as cur:
-            cur.execute(
+    async def update_user_profile(self, user_id: str, preferences: dict):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
                 """INSERT INTO user_profiles (user_id, preferences, updated_at)
-                   VALUES (%s, %s, now()) ON CONFLICT (user_id)
-                   DO UPDATE SET preferences = %s, updated_at = now()""",
-                (user_id, Json(preferences), Json(preferences))
+                   VALUES ($1, $2, now()) ON CONFLICT (user_id)
+                   DO UPDATE SET preferences = $2, updated_at = now()""",
+                user_id, json.dumps(preferences)
             )
 
-    def delete_user_profile(self, user_id: str):
-        with self._cursor() as cur:
-            cur.execute(
-                "DELETE FROM user_profiles WHERE user_id = %s",
-                (user_id,)
+    async def delete_user_profile(self, user_id: str):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM user_profiles WHERE user_id = $1",
+                user_id
             )
 
-    def delete_user_history(self, user_id: str):
-        with self._cursor() as cur:
-            cur.execute(
-                "DELETE FROM llm_memory WHERE user_id = %s",
-                (user_id,)
+    async def delete_user_history(self, user_id: str):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM llm_memory WHERE user_id = $1",
+                user_id
             )
 
-    def store_knowledge(self, user_id: str, source_type: str, source_ref: str,
-                        content: str, embedding: list, chunk_index: int = 0):
-        with self._cursor() as cur:
-            cur.execute(
+    async def store_knowledge(self, user_id: str, source_type: str, source_ref: str,
+                              content: str, embedding: list, chunk_index: int = 0):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
                 """INSERT INTO knowledge_base (user_id, source_type, source_ref, chunk_index, content, embedding)
-                   VALUES (%s, %s, %s, %s, %s, %s::vector)""",
-                (user_id, source_type, source_ref, chunk_index, content, self._vec(embedding))
+                   VALUES ($1, $2, $3, $4, $5, $6::vector)""",
+                user_id, source_type, source_ref, chunk_index, content, self._vec(embedding)
             )
 
-    def search_knowledge(self, embedding: list, top_k: int = 5, user_id: str = None) -> list:
+    async def search_knowledge(self, embedding: list, top_k: int = 5, user_id: str = None) -> list:
         vec = self._vec(embedding)
-        with self._cursor() as cur:
+        async with self._pool.acquire() as conn:
             if user_id:
-                cur.execute(
+                rows = await conn.fetch(
                     """SELECT source_type, source_ref, content FROM knowledge_base
-                       WHERE user_id = %s AND embedding IS NOT NULL
-                       ORDER BY embedding <=> %s::vector LIMIT %s""",
-                    (user_id, vec, top_k)
+                       WHERE user_id = $1 AND embedding IS NOT NULL
+                       ORDER BY embedding <=> $2::vector LIMIT $3""",
+                    user_id, vec, top_k
                 )
             else:
-                cur.execute(
+                rows = await conn.fetch(
                     """SELECT source_type, source_ref, content FROM knowledge_base
                        WHERE embedding IS NOT NULL
-                       ORDER BY embedding <=> %s::vector LIMIT %s""",
-                    (vec, top_k)
+                       ORDER BY embedding <=> $1::vector LIMIT $2""",
+                    vec, top_k
                 )
-            return [{'source_type': r[0], 'source_ref': r[1], 'content': r[2]}
-                    for r in cur.fetchall()]
+        return [{'source_type': r['source_type'], 'source_ref': r['source_ref'], 'content': r['content']}
+                for r in rows]
 
-    def get_all_history(self, user_id: str) -> list:
-        with self._cursor() as cur:
-            cur.execute(
+    async def get_all_history(self, user_id: str) -> list:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
                 """SELECT role, content FROM llm_memory
-                   WHERE user_id = %s ORDER BY created_at ASC""",
-                (user_id,)
+                   WHERE user_id = $1 ORDER BY created_at ASC""",
+                user_id
             )
-            rows = cur.fetchall()
-        return [{'role': row[0], 'content': row[1]} for row in rows]
+        return [{'role': row['role'], 'content': row['content']} for row in rows]
 
-    def set_out_of_context(self, user_id: str):
-        with self._cursor() as cur:
-            cur.execute(
-                "UPDATE llm_memory SET in_context = false WHERE user_id = %s",
-                (user_id,)
+    async def set_out_of_context(self, user_id: str):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE llm_memory SET in_context = false WHERE user_id = $1",
+                user_id
             )
 
-    def close(self):
-        self._pool.closeall()
+    async def close(self):
+        await self._pool.close()

@@ -1,4 +1,4 @@
-import subprocess
+import asyncio
 from common.config import WORKDIR, config
 from tools.todo import PlanItem, ToDoManager
 from tools.skill_manager import SkillManager
@@ -8,73 +8,94 @@ from pathlib import Path
 _skill_manager = SkillManager(Path(__file__).parent.parent / "skills")
 _skill_manager.load_skills()
 
-def run_bash(command: str) -> str:
+
+async def run_bash(command: str) -> str:
     if 'rm' in command or 'sudo' in command:
         while True:
-            user_input = input("Warning: Command contains 'rm' or 'sudo'. Are you sure you want to run this? (Y/N) ")
+            user_input = await asyncio.to_thread(
+                input, "Warning: Command contains 'rm' or 'sudo'. Are you sure you want to run this? (Y/N) "
+            )
             if user_input.lower() == 'y':
                 break
             else:
                 return "Command not executed, cancelled by user."
+    print(f"Running command: {command}")
     try:
-        print(f"Running command: {command}")
-        result = subprocess.run(
+        proc = await asyncio.create_subprocess_shell(
             command,
-            shell=True,
             cwd=WORKDIR,
-            capture_output=True,
-            text=True,
-            timeout=120
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-    except subprocess.TimeoutExpired:
-        return 'Error: Timeout(120ms)'
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        return 'Error: Timeout(120s)'
+    return (stdout.decode() + stderr.decode()).strip() or "(no output)"
 
-    return (result.stdout + result.stderr).strip() or "(no output)"
 
-def read_file(file_path: str) -> str:
+async def read_file(file_path: str) -> str:
+    print(f"Reading file: {file_path}")
     try:
-        print(f"Reading file: {file_path}")
-        with open(file_path, "r") as f:
-            return f.read()
+        return await asyncio.to_thread(_read_file_sync, file_path)
     except Exception as e:
         return f"Error reading file: {e}"
 
-def write_file(file_path: str, content: str) -> str:
+
+async def write_file(file_path: str, content: str) -> str:
+    print(f"Writing file: {file_path}")
     try:
-        print(f"Writing file: {file_path}")
-        with open(file_path, 'w', encoding='utf-8') as file:
-            file.write(content)
+        await asyncio.to_thread(_write_file_sync, file_path, content)
     except Exception as e:
         return f"Error writing file: {e}"
     return f"File {file_path} written successfully."
 
-def edit_file(file_path: str, old: str, new: str) -> str:
+
+async def edit_file(file_path: str, old: str, new: str) -> str:
+    print(f"Editing file: {file_path}")
     try:
-        print(f"Editing file: {file_path}")
-        with open(file_path, "r") as f:
-            content = f.read()
-        content = content.replace(old, new)
-        with open(file_path, "w") as f:
-            f.write(content)
+        await asyncio.to_thread(_edit_file_sync, file_path, old, new)
     except Exception as e:
         return f"Error editing file: {e}"
     return f"File {file_path} edited successfully."
 
-def to_do(items: list[PlanItem]) -> str:
+
+def _read_file_sync(file_path: str) -> str:
+    with open(file_path, "r") as f:
+        return f.read()
+
+
+def _write_file_sync(file_path: str, content: str):
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+
+def _edit_file_sync(file_path: str, old: str, new: str):
+    with open(file_path, "r") as f:
+        content = f.read()
+    content = content.replace(old, new)
+    with open(file_path, "w") as f:
+        f.write(content)
+
+
+async def to_do(items: list[PlanItem]) -> str:
     manager = ToDoManager()
     return manager.to_do(items)
 
-def list_skills() -> str:
+
+async def list_skills() -> str:
     items = _skill_manager.list_skills()
     return '\n'.join(items) if items else "No skills available."
 
-def preview_skill(name: str) -> str:
+
+async def preview_skill(name: str) -> str:
     return _skill_manager.preview_skill(name) or f"Skill '{name}' not found."
 
-def get_skill(name: str) -> str:
+
+async def get_skill(name: str) -> str:
     return _skill_manager.get_skill(name) or f"Skill '{name}' not found."
 
-def grep(pattern: str, path: str, recursive: bool = True) -> str:
+
+async def grep(pattern: str, path: str, recursive: bool = True) -> str:
     import re as _re
     from pathlib import Path as _Path
     results = []
@@ -92,7 +113,8 @@ def grep(pattern: str, path: str, recursive: bool = True) -> str:
             continue
     return '\n'.join(results) if results else "No matches found."
 
-def glob(pattern: str, path: str = '.') -> str:
+
+async def glob(pattern: str, path: str = '.') -> str:
     print(f"Searching for files with pattern: {pattern} in path: {path}")
     from pathlib import Path
     try:
@@ -102,11 +124,12 @@ def glob(pattern: str, path: str = '.') -> str:
     except Exception as e:
         return f"Error: {e}"
 
-def run_sub_agent(prompt: str) -> str:
+
+async def run_sub_agent(prompt: str) -> str:
     from agent.loop import Agent
     print("Running sub-agent")
     subagent = Agent(config(), tools=tools, is_subagent=True)
-    return subagent.run(prompt)
+    return await subagent.run(prompt)
 
 
 tools = [{
