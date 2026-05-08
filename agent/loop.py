@@ -8,7 +8,7 @@ from colorama import Fore, Style, init as colorama_init
 
 from common.config import config
 from tools.manager import tools, tool_handler, all_tools
-from tools.todo import ToDoManager
+from tools.todo import ToDoManager, PlanItemStatus
 from memory.db import DB
 from agent.profile import ProfileManager
 
@@ -41,6 +41,11 @@ class Agent:
         self._last_user_message = ''
 
     KNOWLEDGE_TOOLS = {'fetch_text', 'read_file'}
+
+    def _task_complete(self) -> bool:
+        if not self.todo_manager.items:
+            return True
+        return all(i.status == PlanItemStatus.COMPLETED for i in self.todo_manager.items)
 
     def _chunk(self, text: str, size: int = 1500, overlap: int = 200) -> list:
         chunks, start = [], 0
@@ -105,6 +110,7 @@ class Agent:
             asyncio.create_task(self._profile.update(self._last_user_message, content))
 
     async def run(self, user_message: str) -> str:
+        self.todo_manager = ToDoManager()
         self._system_prompt = await self._build_system_prompt()
         messages = await self._build_messages(user_message)
         final_messages = await self._execute(messages)
@@ -113,7 +119,10 @@ class Agent:
                 return msg.get('content', '')
         return ''
 
-    async def _execute(self, messages: List[Dict]) -> List[Dict]:
+    async def _execute(self, messages: List[Dict], _depth: int = 0) -> List[Dict]:
+        if _depth >= 30:
+            return messages
+
         stop = asyncio.Event()
         spinner = asyncio.create_task(_spin(stop))
 
@@ -151,6 +160,9 @@ class Agent:
         messages = messages + [{'role': 'assistant', 'content': full_content}]
 
         if not tool_calls:
+            if not self._task_complete():
+                messages.append({'role': 'user', 'content': 'Continue with the remaining tasks.'})
+                return await self._execute(messages, _depth + 1)
             return messages
 
         for tool_call in tool_calls:
@@ -158,10 +170,13 @@ class Agent:
             name = tool_call.function.name
             args = tool_call.function.arguments
             print(f'{Fore.YELLOW}[tool: {name}]{Style.RESET_ALL}', flush=True)
-            result = await tool_handler[name](**args)
+            if name == 'to_do':
+                result = self.todo_manager.to_do(**args)
+            else:
+                result = await tool_handler[name](**args)
             if name in self.KNOWLEDGE_TOOLS and isinstance(result, str) and result.strip():
                 await self._store_knowledge(args, result)
             await self._save_turn({'role': 'tool', 'content': f"Name: {name}, Arguments: {args}, Result: {result}", 'tool_call_id': tool_call_id})
             messages.append({'role': 'tool', 'content': f"Name: {name}, Arguments: {args}, Result: {result}", 'tool_call_id': tool_call_id})
 
-        return await self._execute(messages)
+        return await self._execute(messages, _depth + 1)

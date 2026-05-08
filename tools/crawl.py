@@ -1,16 +1,18 @@
 import asyncio
-import aiohttp
+import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 
 
 async def fetch_html(url: str) -> str:
     print(f"Fetching HTML for URL: {url}")
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10),
-                               headers={"User-Agent": "Mozilla/5.0"}) as resp:
-            resp.raise_for_status()
-            return await resp.text()
+    return await asyncio.to_thread(_fetch_html_sync, url)
+
+
+def _fetch_html_sync(url: str) -> str:
+    resp = requests.get(url, timeout= 15, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    return resp.text
 
 
 async def fetch_text(url: str) -> str:

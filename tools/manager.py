@@ -1,5 +1,5 @@
 import asyncio
-from aioconsole import ainput
+from aioconsole import ainput, aprint
 from common.config import WORKDIR, config
 from tools.todo import PlanItem, ToDoManager
 from tools.skill_manager import SkillManager
@@ -122,6 +122,11 @@ async def glob(pattern: str, path: str = '.') -> str:
         return '\n'.join(str(m) for m in matches) if matches else "No files found."
     except Exception as e:
         return f"Error: {e}"
+
+
+async def ask_user(question: str) -> str:
+    await aprint(f'{question}')
+    return await ainput("User> ")
 
 
 async def run_sub_agent(prompt: str) -> str:
@@ -311,6 +316,23 @@ tools = [{
 all_tools = tools + [{
     "type": "function",
     "function": {
+        "name": "ask_user",
+        "description": "Pause and ask the user a question when you genuinely need clarification before proceeding. Only use this when the task is ambiguous and you cannot make a reasonable assumption. Do NOT use this to confirm steps — just do them.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The specific question to ask the user"
+                }
+            },
+            "required": ["question"]
+        }
+    }
+},
+{
+    "type": "function",
+    "function": {
         "name": "run_sub_agent",
         "description": "Run a sub-agent with a given prompt",
         "parameters": {
@@ -362,6 +384,7 @@ all_tools = tools + [{
 },]
 
 tool_handler = {
+    'ask_user': ask_user,
     'run_bash': run_bash,
     'read_file': read_file,
     'write_file': write_file,
