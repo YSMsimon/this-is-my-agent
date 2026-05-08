@@ -1,5 +1,7 @@
 import psycopg2
+import psycopg2.pool
 from psycopg2.extras import Json
+from contextlib import contextmanager
 from dotenv import load_dotenv
 import os
 
@@ -7,13 +9,27 @@ import os
 class DB:
     def __init__(self):
         load_dotenv()
-        self.conn = psycopg2.connect(os.getenv('DATABASE_URL'))
+        self._pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1, maxconn=10, dsn=os.getenv('DATABASE_URL')
+        )
 
     def _vec(self, embedding: list) -> str:
+        if not embedding:
+            raise ValueError("embedding must have at least 1 dimension")
         return '[' + ','.join(map(str, embedding)) + ']'
 
+    @contextmanager
     def _cursor(self):
-        return self.conn.cursor()
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                yield cur
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._pool.putconn(conn)
 
     def add_message(self, user_id: str, role: str, content: str,
                     embedding: list = None, tool_call_id: str = None,
@@ -31,7 +47,6 @@ class DB:
                        VALUES (%s, %s, %s, %s, %s)""",
                     (user_id, role, content, tool_call_id, in_context)
                 )
-        self.conn.commit()
 
     def get_recent_history(self, user_id: str, limit: int = 20) -> tuple:
         with self._cursor() as cur:
@@ -68,7 +83,6 @@ class DB:
                    DO UPDATE SET preferences = %s, updated_at = now()""",
                 (user_id, Json(preferences), Json(preferences))
             )
-        self.conn.commit()
 
     def delete_user_profile(self, user_id: str):
         with self._cursor() as cur:
@@ -76,7 +90,6 @@ class DB:
                 "DELETE FROM user_profiles WHERE user_id = %s",
                 (user_id,)
             )
-        self.conn.commit()
 
     def delete_user_history(self, user_id: str):
         with self._cursor() as cur:
@@ -84,7 +97,6 @@ class DB:
                 "DELETE FROM llm_memory WHERE user_id = %s",
                 (user_id,)
             )
-        self.conn.commit()
 
     def store_knowledge(self, user_id: str, source_type: str, source_ref: str,
                         content: str, embedding: list, chunk_index: int = 0):
@@ -94,7 +106,6 @@ class DB:
                    VALUES (%s, %s, %s, %s, %s, %s::vector)""",
                 (user_id, source_type, source_ref, chunk_index, content, self._vec(embedding))
             )
-        self.conn.commit()
 
     def search_knowledge(self, embedding: list, top_k: int = 5, user_id: str = None) -> list:
         vec = self._vec(embedding)
@@ -132,7 +143,6 @@ class DB:
                 "UPDATE llm_memory SET in_context = false WHERE user_id = %s",
                 (user_id,)
             )
-        self.conn.commit()
 
     def close(self):
-        self.conn.close()
+        self._pool.closeall()
