@@ -130,10 +130,9 @@ async def ask_user(question: str) -> str:
 
 
 async def run_sub_agent(prompt: str) -> str:
-    from agent.loop import Agent
+    from agent.executor import ExecutorAgent
     print("Running sub-agent")
-    subagent = Agent(config(), tools=tools, is_subagent=True)
-    return await subagent.run(prompt)
+    return await ExecutorAgent(config(), tools=tools).run(prompt)
 
 
 tools = [{
@@ -313,7 +312,7 @@ tools = [{
     }
 }]
 
-all_tools = tools + [{
+_ask_user_def = {
     "type": "function",
     "function": {
         "name": "ask_user",
@@ -321,33 +320,14 @@ all_tools = tools + [{
         "parameters": {
             "type": "object",
             "properties": {
-                "question": {
-                    "type": "string",
-                    "description": "The specific question to ask the user"
-                }
+                "question": {"type": "string", "description": "The specific question to ask the user"}
             },
             "required": ["question"]
         }
     }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "run_sub_agent",
-        "description": "Run a sub-agent with a given prompt",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "The prompt to run the sub-agent with"
-                }
-            },
-            "required": ["prompt"]
-        }
-    }
-},
-{
+}
+
+_to_do_def = {
     "type": "function",
     "function": {
         "name": "to_do",
@@ -361,19 +341,13 @@ all_tools = tools + [{
                     "items": {
                         "type": "object",
                         "properties": {
-                            "content": {
-                                "type": "string",
-                                "description": "The content of the to-do item"
-                            },
+                            "content": {"type": "string", "description": "The content of the to-do item"},
                             "status": {
                                 "type": "string",
                                 "enum": ["pending", "in_progress", "completed"],
-                                "description": "The status of the to-do item (pending, in_progress, completed)"
+                                "description": "The status of the to-do item"
                             },
-                            "parent": {
-                                "type": "string",
-                                "description": "The content of the parent to-do item, if this is a subtask"
-                            }
+                            "parent": {"type": "string", "description": "The content of the parent to-do item, if this is a subtask"}
                         }
                     }
                 }
@@ -381,7 +355,31 @@ all_tools = tools + [{
             "required": ["items"]
         }
     }
-},]
+}
+
+_run_sub_agent_def = {
+    "type": "function",
+    "function": {
+        "name": "run_sub_agent",
+        "description": "Run a sub-agent with a given prompt",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "The prompt to run the sub-agent with"}
+            },
+            "required": ["prompt"]
+        }
+    }
+}
+
+# MainAgent in simple mode: full tools + task tracking + user clarification
+simple_tools = tools + [_ask_user_def, _to_do_def]
+
+# ExecutorAgent in deep mode: full tools + user clarification, no task tracking
+executor_tools = tools + [_ask_user_def]
+
+# Legacy full set (used by acp_agent)
+all_tools = tools + [_ask_user_def, _to_do_def, _run_sub_agent_def]
 
 tool_handler = {
     'ask_user': ask_user,

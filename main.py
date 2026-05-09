@@ -4,16 +4,16 @@ from colorama import Fore, Style
 
 from memory.db import DB
 from common.config import config
-from agent.loop import Agent
+from agent.loop import MainAgent
 from cli.commands import CommandManager
-from tools.manager import all_tools
+from tools.manager import simple_tools
 
 
 async def main():
     db = await DB.create()
     cfg = config()
-    agent = Agent(cfg, tools=all_tools, db=db)
-    commands = CommandManager(db, agent.user_id, cfg)
+    agent = MainAgent(cfg, tools=simple_tools, db=db)
+    commands = CommandManager(db, agent.user_id, cfg, agent)
     try:
         while True:
             user_input = await ainput("User> ")

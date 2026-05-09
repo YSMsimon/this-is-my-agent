@@ -19,7 +19,7 @@ from acp.schema import ClientCapabilities, Implementation
 from common.config import config
 from memory.db import DB
 from tools.manager import all_tools
-from agent.loop import Agent as CustomAgent
+from agent.loop import MainAgent as CustomAgent
 
 cfg = config()
 db: DB = None

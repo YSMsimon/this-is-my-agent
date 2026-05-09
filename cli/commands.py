@@ -12,14 +12,17 @@ COMMANDS = {
     '/clear-history':     'Delete all conversation history for your user',
     '/compact':           'Compact conversation history into a summary',
     '/compact "<prompt>"':'Compact with extra instructions (e.g. /compact "focus on code decisions")',
+    '/simple':           'Switch to simple conversation mode (faster)',
+    '/deep':             'Switch to deep conversation mode (more costly)'
 }
 
 
 class CommandManager:
-    def __init__(self, db, user_id: str, cfg: config):
+    def __init__(self, db, user_id: str, cfg: config, agent):
         self.db = db
         self.user_id = user_id
         self.cfg = cfg
+        self.agent = agent
 
     def is_command(self, text: str) -> bool:
         return text.strip().startswith('/')
@@ -71,6 +74,16 @@ class CommandManager:
             compactor = Compactor(self.db, self.user_id, self.cfg)
             summary = await compactor.compact(extra_prompt=extra)
             await aprint(f"Done. Summary:\n{summary}")
+            return True
+
+        if cmd == '/simple':
+            self.agent.mode = 'simple'
+            print("Switched to simple mode.")
+            return True
+
+        if cmd == '/deep':
+            self.agent.mode = 'deep'
+            print("Switched to deep mode.")
             return True
 
         print(f"Unknown command: {cmd}. Type /help to see available commands.")

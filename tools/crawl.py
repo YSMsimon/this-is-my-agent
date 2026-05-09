@@ -17,7 +17,10 @@ def _fetch_html_sync(url: str) -> str:
 
 async def fetch_text(url: str) -> str:
     print(f"Fetching text content for URL: {url}")
-    html = await fetch_html(url)
+    try:
+        html = await fetch_html(url)
+    except Exception as e:
+        return f"Error fetching {url}: {e}"
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "nav", "footer"]):
         tag.decompose()
