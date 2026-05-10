@@ -135,15 +135,16 @@ class MainAgent(Agent):
         return list(await asyncio.gather(*[run_one(t, i) for i, t in enumerate(tasks)]))
 
     async def _synthesize(self, user_message: str, results: list[dict]) -> str:
+        import litellm
         summary = "\n\n".join(f"Task: {r['task']}\nResult: {r['result']}" for r in results)
-        resp = await self.client.chat(
+        resp = await litellm.acompletion(
             model=self.cfg.model,
             messages=[
                 {'role': 'system', 'content': 'Synthesize the task results into a clear, complete answer.'},
                 {'role': 'user', 'content': f"Original request: {user_message}\n\nResults:\n{summary}"}
             ]
         )
-        answer = resp.message.content.strip()
+        answer = resp.choices[0].message.content.strip()
         await self.db.add_message(self.user_id, 'user', user_message)
         await self.db.add_message(self.user_id, 'assistant', answer)
         await aprint(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} {answer}')

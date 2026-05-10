@@ -13,7 +13,6 @@ def _load_prompt(name: str) -> str:
 class config:
     def __init__(self):
         load_dotenv()
-        self.base_url = os.getenv('BASE_URL')
         self.model = os.getenv('MODEL')
         self.embedding_model = os.getenv('EMBEDDING_MODEL')
         self.profile_model = os.getenv('PROFILE_MODEL')

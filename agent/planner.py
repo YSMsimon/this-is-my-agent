@@ -1,4 +1,5 @@
 import re
+import litellm
 from pydantic import BaseModel, ValidationError
 from agent.base import Agent
 from common.config import config
@@ -22,17 +23,18 @@ class PlannerAgent(Agent):
             {'role': 'user', 'content': user_message}
         ]
         for attempt in range(2):
-            resp = await self.client.chat(
+            resp = await litellm.acompletion(
                 model=self.cfg.planner_model,
                 messages=messages,
-                format=PlanOutput.model_json_schema(),
-                options={'temperature': 0}
+                response_format={"type": "json_object"},
+                temperature=0,
             )
+            content = resp.choices[0].message.content
             try:
-                return PlanOutput.model_validate_json(_strip_fence(resp.message.content)).tasks
+                return PlanOutput.model_validate_json(_strip_fence(content)).tasks
             except (ValidationError, ValueError):
-                messages.append({'role': 'assistant', 'content': resp.message.content})
+                messages.append({'role': 'assistant', 'content': content})
                 messages.append({'role': 'user', 'content':
                     f'Return your answer as a JSON object matching this schema: {PlanOutput.model_json_schema()}'
                 })
-        raise ValueError(f"Planner failed to return valid JSON: {resp.message.content}")
+        raise ValueError(f"Planner failed to return valid JSON: {content}")

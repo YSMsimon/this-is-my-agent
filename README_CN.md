@@ -2,7 +2,7 @@
 
 > **本项目正在积极开发中，预计会存在 Bug、功能不完整及粗糙的地方。错误处理与 try/catch 覆盖将逐步完善。**
 
-一个完全基于异步的多智能体 CLI 助手，由 Ollama 驱动，具备持久化记忆、语义搜索、用户画像追踪、工具调用，以及两种对话模式：**Simple（简单）** 和 **Deep（深度）**。
+一个完全基于异步的多智能体 CLI 助手，使用 **[litellm](https://github.com/BerriAI/litellm)** 作为 LLM 客户端 —— 只需修改 `.env` 中的一行，即可在本地 Ollama 模型、Gemini、OpenAI、Anthropic、DeepSeek 等之间自由切换。
 
 ---
 
@@ -39,7 +39,7 @@ MainAgent
     │  └──────────────────────────────────────┘
     │
     ▼
-响应输出
+流式响应输出
 ```
 
 单智能体循环，拥有完整工具访问权限，并注入 RAG 记忆与用户画像上下文。速度快，适合大多数日常任务。
@@ -82,6 +82,7 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 .
 ├── main.py                  # 入口文件（异步交互式命令行）
 ├── requirements.txt
+├── litellm_config.yml       # LiteLLM 代理配置（可选）
 ├── Docker-compose.yml       # PostgreSQL + pgvector
 ├── init.sql                 # 数据库表结构（首次启动时自动执行）
 ├── .env.example
@@ -153,17 +154,12 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 
 ## 前置依赖
 
-在开始之前，请先安装以下依赖：
-
 | 依赖 | 用途 |
 |---|---|
 | [Python 3.10+](https://www.python.org/downloads/) | 运行智能体 |
-| [Node.js 18+](https://nodejs.org/) | 运行微信 ACP 桥接服务（`npx wechat-acp`） |
-| [Ollama](https://ollama.com/download) | 在本地运行 LLM 和嵌入模型 |
 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | 运行 PostgreSQL + pgvector 数据库 |
-
-> **`pip install ollama` 是否可以替代安装 Ollama 应用？**
-> 不能。`ollama` Python 包只是一个 HTTP 客户端 SDK，你仍然需要在本机安装并运行 **Ollama 应用**来加载和运行模型。
+| [Ollama](https://ollama.com/download) | 仅在使用本地模型时需要 |
+| [Node.js 18+](https://nodejs.org/) | 仅在使用微信 ACP 时需要 |
 
 ---
 
@@ -177,32 +173,7 @@ cd this-is-my-agent
 pip install -r requirements.txt
 ```
 
-### 2. 通过 Ollama 拉取模型
-
-先确保 Ollama 正在运行（打开 Ollama 应用或执行 `ollama serve`），然后拉取嵌入模型：
-
-```bash
-ollama pull nomic-embed-text
-```
-
-**关于主模型（`MODEL`）及其他模型：**
-
-- 如果你使用的是**云端模型**（模型名称以 `:cloud` 结尾，例如 `qwen3-coder-next:cloud`），Ollama 会从云端流式加载，**无需提前拉取**。
-- 如果你使用的是**本地模型**（名称中没有 `:cloud` 后缀），则必须先拉取：
-
-```bash
-ollama pull qwen2.5-coder:7b
-```
-
-对于 `PROFILE_MODEL`、`COMPACT_MODEL`、`PLANNER_MODEL`、`EVALUATOR_MODEL`，推荐使用轻量级模型，因为这些都是结构化抽取任务：
-
-```bash
-ollama pull qwen2.5:0.5b     # 最快，占用内存最少
-ollama pull llama3.2:1b      # 稍强一些，仍然非常轻量
-ollama pull gemma3:1b        # 速度与精度的良好平衡
-```
-
-### 3. 启动数据库
+### 2. 启动数据库
 
 ```bash
 docker compose up -d
@@ -210,32 +181,56 @@ docker compose up -d
 
 这将在 **5433 端口**启动一个带有 pgvector 扩展的 PostgreSQL 实例。`init.sql` 会在首次运行时自动创建所需的数据库表。
 
-### 4. 配置环境变量
+### 3. 配置环境变量
 
 ```bash
 cp .env.exmaple .env
 ```
 
-编辑 `.env` 文件：
+编辑 `.env` 文件 —— 所有模型字符串使用 litellm 格式（`提供商/模型名`）：
 
 ```env
-BASE_URL=http://localhost:11434
-MODEL=qwen3-coder-next:cloud
+# ── 模型 ─────────────────────────────────────────────────────────────────────
+MODEL=gemini/gemini-2.0-flash
+EMBEDDING_MODEL=ollama/nomic-embed-text
+PROFILE_MODEL=gemini/gemini-2.0-flash
+COMPACT_MODEL=gemini/gemini-2.0-flash
+PLANNER_MODEL=gemini/gemini-2.0-flash
+EVALUATOR_MODEL=gemini/gemini-2.0-flash
+
+# ── 数据库 ───────────────────────────────────────────────────────────────────
 DATABASE_URL=postgresql://myuser:mypassword@localhost:5433/agent_memory
-EMBEDDING_MODEL=nomic-embed-text
-PROFILE_MODEL=gemma4:31b-cloud
-COMPACT_MODEL=gemma4:31b-cloud
-PLANNER_MODEL=gemma4:31b-cloud
-EVALUATOR_MODEL=gemma4:31b-cloud
+
+# ── API 密钥（填写你使用的提供商）──────────────────────────────────────────────
+GEMINI_API_KEY=...
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+# DEEPSEEK_API_KEY=...
+
+# ── Ollama（仅在非默认地址时需要）────────────────────────────────────────────
+# OLLAMA_API_BASE=http://localhost:11434
 ```
 
-### 5. 运行
+### 4. 运行
 
 ```bash
 python3 main.py
 ```
 
-在 `User>` 提示符后输入消息，输入 `/exit` 退出。
+---
+
+## 模型字符串格式
+
+智能体使用 litellm，通过修改前缀即可切换任意提供商：
+
+| 提供商 | 格式 | 示例 |
+|--------|------|------|
+| Ollama（对话） | `ollama_chat/模型名` | `ollama_chat/llama3.2` |
+| Ollama（嵌入） | `ollama/模型名` | `ollama/nomic-embed-text` |
+| Google Gemini | `gemini/模型名` | `gemini/gemini-2.0-flash` |
+| OpenAI | `openai/模型名` | `openai/gpt-4o` |
+| Anthropic | `anthropic/模型名` | `anthropic/claude-opus-4-5` |
+| DeepSeek | `deepseek/模型名` | `deepseek/deepseek-chat` |
 
 ---
 
@@ -243,7 +238,6 @@ python3 main.py
 
 | 变量名 | 说明 |
 |--------|------|
-| `BASE_URL` | Ollama 服务地址（如 `http://localhost:11434`） |
 | `MODEL` | 主对话模型 |
 | `EMBEDDING_MODEL` | 用于 RAG 的嵌入模型 |
 | `PROFILE_MODEL` | 后台画像更新使用的模型 |
@@ -251,6 +245,23 @@ python3 main.py
 | `PLANNER_MODEL` | 任务规划使用的模型（深度模式） |
 | `EVALUATOR_MODEL` | 结果评估使用的模型（深度模式） |
 | `DATABASE_URL` | PostgreSQL 连接字符串 |
+| `OLLAMA_API_BASE` | 自定义 Ollama 地址（默认：`http://localhost:11434`） |
+| `GEMINI_API_KEY` | Google Gemini API 密钥 |
+| `OPENAI_API_KEY` | OpenAI API 密钥 |
+| `ANTHROPIC_API_KEY` | Anthropic API 密钥 |
+| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 |
+
+---
+
+## LiteLLM 代理（可选）
+
+项目内置的 `litellm_config.yml` 可以启动一个本地 OpenAI 兼容代理服务器，将请求路由到任意后端。适用于需要从其他工具访问智能体的场景。
+
+```bash
+litellm --config litellm_config.yml --port 4000
+```
+
+启动后，任何兼容 OpenAI 的客户端都可以将请求发送到 `http://localhost:4000`，并使用配置文件中定义的模型别名（`main`、`gpt-4o`、`claude-opus`、`gemini-flash` 等）。
 
 ---
 
@@ -258,9 +269,7 @@ python3 main.py
 
 > **已知问题：** 通过微信 ACP 发送的 CLI 命令（如 `/exit`、`/help`）目前无法正常工作。请在终端中使用命令行功能。
 
-按以下步骤启用微信 ACP 桥接：
-
-**1. 编辑 `wechat-acp.config.json`**，将占位路径替换为你自己的实际路径：
+**1. 编辑 `wechat-acp.config.json`**，将占位路径替换为你的实际路径：
 
 ```json
 {
@@ -269,19 +278,9 @@ python3 main.py
 }
 ```
 
-- **Mac/Linux**：在项目目录中执行 `pwd` 获取绝对路径
-- **Windows**：将 `python3` 改为 `python`，并使用正斜杠，例如 `C:/Users/yourname/this-is-my-agent`
-- `cwd` 是必须的 —— Python 需要通过它来解析 `agent/`、`memory/`、`tools/` 等包的导入路径
-
 **2. 启动 ACP 桥接服务：**
 
-- **Mac/Linux：**
-  ```bash
-  ./start-wechat-acp.sh
-  ```
-- **Windows（PowerShell）：**
-  ```powershell
-  .\start-wechat-acp.ps1
-  ```
+- **Mac/Linux：** `./start-wechat-acp.sh`
+- **Windows（PowerShell）：** `.\start-wechat-acp.ps1`
 
 `npx` 需要安装 Node.js 才能使用。

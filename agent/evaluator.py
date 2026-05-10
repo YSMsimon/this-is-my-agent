@@ -1,4 +1,5 @@
 import re
+import litellm
 from pydantic import BaseModel, ValidationError
 from agent.base import Agent
 from common.config import config
@@ -27,20 +28,21 @@ class EvaluatorAgent(Agent):
             {'role': 'user', 'content': f"Original request: {user_message}\n\nCompleted tasks:\n{summary}"}
         ]
         for attempt in range(2):
-            resp = await self.client.chat(
+            resp = await litellm.acompletion(
                 model=self.cfg.evaluator_model,
                 messages=messages,
-                format=EvalOutput.model_json_schema(),
-                options={'temperature': 0}
+                response_format={"type": "json_object"},
+                temperature=0,
             )
+            content = resp.choices[0].message.content
             try:
-                return EvalOutput.model_validate_json(_strip_fence(resp.message.content))
+                return EvalOutput.model_validate_json(_strip_fence(content))
             except (ValidationError, ValueError):
-                messages.append({'role': 'assistant', 'content': resp.message.content})
+                messages.append({'role': 'assistant', 'content': content})
                 messages.append({'role': 'user', 'content':
                     f'Return your answer as a JSON object matching this schema: {EvalOutput.model_json_schema()}'
                 })
-        raise ValueError(f"Evaluator failed to return valid JSON: {resp.message.content}")
+        raise ValueError(f"Evaluator failed to return valid JSON: {content}")
 
     async def run(self, user_message: str) -> str:
         raise NotImplementedError("Use evaluate() directly")

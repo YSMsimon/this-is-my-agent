@@ -1,4 +1,4 @@
-from ollama import AsyncClient
+import litellm
 from common.config import config
 
 
@@ -6,7 +6,6 @@ class Compactor:
     def __init__(self, db, user_id: str, cfg: config):
         self.db = db
         self.user_id = user_id
-        self.client = AsyncClient(host=cfg.base_url)
         self.cfg = cfg
 
     async def compact(self, extra_prompt: str = None) -> str:
@@ -23,11 +22,11 @@ class Compactor:
             prompt += f"\n\nAdditional instructions: {extra_prompt}"
         prompt += f"\n\nCONVERSATION:\n{conversation}\n\nSUMMARY:"
 
-        resp = await self.client.chat(
+        resp = await litellm.acompletion(
             model=self.cfg.compact_model,
             messages=[{'role': 'user', 'content': prompt}]
         )
-        summary = resp.message.content.strip()
+        summary = resp.choices[0].message.content.strip()
 
         await self.db.set_out_of_context(self.user_id)
         await self.db.add_message(

@@ -1,14 +1,18 @@
 import asyncio
 import itertools
+import json
 from typing import List, Dict, Optional
 
-from ollama import AsyncClient
+import litellm
 from colorama import Fore, Style, init as colorama_init
 
 from common.config import config
 from tools.manager import tool_handler, tools as default_tools
 
 colorama_init(autoreset=False)
+
+litellm.drop_params = True       # silently drop params unsupported by a given provider
+litellm.suppress_debug_info = True  # suppress "Give Feedback" banners on errors
 
 _SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
@@ -28,7 +32,6 @@ class Agent:
     def __init__(self, cfg: config, tools: Optional[List] = None):
         self.cfg = cfg
         self.tools = tools if tools is not None else default_tools
-        self.client = AsyncClient(host=cfg.base_url)
         self._system_prompt = ''
 
     def _chunk(self, text: str, size: int = 1500, overlap: int = 200) -> list:
@@ -39,8 +42,9 @@ class Agent:
         return chunks
 
     async def get_embedding(self, text: str) -> list:
-        response = await self.client.embeddings(model=self.cfg.embedding_model, prompt=text)
-        return response.embedding
+        response = await litellm.aembedding(model=self.cfg.embedding_model, input=[text])
+        item = response.data[0]
+        return item['embedding'] if isinstance(item, dict) else item.embedding
 
     def _task_complete(self) -> bool:
         return True
@@ -61,28 +65,53 @@ class Agent:
         stop = asyncio.Event()
         spinner = asyncio.create_task(_spin(stop))
 
-        response = await self.client.chat(
+        response = await litellm.acompletion(
             model=self.cfg.model,
             messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
-            tools=self.tools,
-            stream=True
+            tools=self.tools if self.tools else None,
+            stream=True,
         )
 
         full_content = ''
-        tool_calls = None
+        tool_calls_raw = {}  # index -> {id, name, arguments}
         first_token = True
 
-        async for chunk in response:
-            if chunk.message.content:
-                if first_token:
-                    stop.set()
-                    await spinner
-                    print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
-                    first_token = False
-                full_content += chunk.message.content
-                print(f'{Fore.GREEN}{chunk.message.content}{Style.RESET_ALL}', end='', flush=True)
-            if chunk.message.tool_calls:
-                tool_calls = chunk.message.tool_calls
+        try:
+            async for chunk in response:
+                delta = chunk.choices[0].delta
+
+                if delta.content:
+                    if first_token:
+                        stop.set()
+                        await spinner
+                        print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
+                        first_token = False
+                    full_content += delta.content
+                    print(f'{Fore.GREEN}{delta.content}{Style.RESET_ALL}', end='', flush=True)
+
+                if delta.tool_calls:
+                    for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx not in tool_calls_raw:
+                            tool_calls_raw[idx] = {'id': '', 'name': '', 'arguments': ''}
+                        if tc_delta.id:
+                            tool_calls_raw[idx]['id'] = tc_delta.id
+                        if tc_delta.function:
+                            if tc_delta.function.name:
+                                tool_calls_raw[idx]['name'] += tc_delta.function.name
+                            if tc_delta.function.arguments:
+                                tool_calls_raw[idx]['arguments'] += tc_delta.function.arguments
+
+        except litellm.RateLimitError as e:
+            stop.set()
+            await spinner
+            print(f'\n{Fore.RED}Rate limit reached: {e.message if hasattr(e, "message") else e}{Style.RESET_ALL}')
+            return messages
+        except Exception as e:
+            stop.set()
+            await spinner
+            print(f'\n{Fore.RED}LLM error: {type(e).__name__}: {str(e)[:200]}{Style.RESET_ALL}')
+            return messages
 
         if not first_token:
             print()
@@ -90,22 +119,39 @@ class Agent:
         stop.set()
         await spinner
 
+        tool_calls = [tool_calls_raw[i] for i in sorted(tool_calls_raw)] if tool_calls_raw else []
+
+        # Build assistant message — include tool_calls field when present so
+        # the subsequent tool messages are correctly linked for strict providers.
+        assistant_msg: Dict = {'role': 'assistant', 'content': full_content or None}
+        if tool_calls:
+            assistant_msg['tool_calls'] = [
+                {
+                    'id': tc['id'],
+                    'type': 'function',
+                    'function': {'name': tc['name'], 'arguments': tc['arguments']},
+                }
+                for tc in tool_calls
+            ]
+
         if full_content:
             await self._save_turn({'role': 'assistant', 'content': full_content})
-        messages = messages + [{'role': 'assistant', 'content': full_content}]
+
+        messages = messages + [assistant_msg]
 
         if not tool_calls:
-            print("no tool calls")
-            print(messages[-1])
             if not self._task_complete():
                 messages.append({'role': 'user', 'content': 'Continue with the remaining tasks.'})
                 return await self._execute(messages, _depth + 1)
             return messages
 
-        for tool_call in tool_calls:
-            tool_call_id = getattr(tool_call, 'id', None)
-            name = tool_call.function.name
-            args = tool_call.function.arguments
+        for tc in tool_calls:
+            name = tc['name']
+            try:
+                args = json.loads(tc['arguments']) if tc['arguments'] else {}
+            except json.JSONDecodeError:
+                args = {}
+            tool_call_id = tc['id']
             print(f'{Fore.YELLOW}[tool: {name}]{Style.RESET_ALL}', flush=True)
             result = await self._call_tool(name, args)
             if name in self.KNOWLEDGE_TOOLS and isinstance(result, str) and result.strip():
@@ -113,12 +159,12 @@ class Agent:
             await self._save_turn({
                 'role': 'tool',
                 'content': f"Name: {name}, Arguments: {args}, Result: {result}",
-                'tool_call_id': tool_call_id
+                'tool_call_id': tool_call_id,
             })
             messages.append({
                 'role': 'tool',
-                'content': f"Name: {name}, Arguments: {args}, Result: {result}",
-                'tool_call_id': tool_call_id
+                'tool_call_id': tool_call_id,
+                'content': str(result),
             })
 
         return await self._execute(messages, _depth + 1)
