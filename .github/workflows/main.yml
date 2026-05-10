@@ -42,7 +42,17 @@ jobs:
           echo "commit_author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
           echo "commit_url=$COMMIT_URL" >> $GITHUB_OUTPUT
 
-      - name: Post to X
+      - name: Setup Node.js
+        if: steps.check_announce.outputs.should_post == 'true'
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        if: steps.check_announce.outputs.should_post == 'true'
+        run: npm install twitter-api-v2
+
+      - name: Post to X (English and Chinese)
         if: steps.check_announce.outputs.should_post == 'true'
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
@@ -53,14 +63,61 @@ jobs:
           COMMIT_AUTHOR: ${{ steps.commit_info.outputs.commit_author }}
           COMMIT_URL: ${{ steps.commit_info.outputs.commit_url }}
         run: |
-          # Create tweet message
-          TWEET="🚀 Update: ${COMMIT_MSG}
+          # Create Node.js script to post tweets in both languages
+          cat > post_tweets.js << 'EOF'
+          const { TwitterApi } = require('twitter-api-v2');
           
-          By: $COMMIT_AUTHOR
+          const client = new TwitterApi({
+            appKey: process.env.X_API_KEY,
+            appSecret: process.env.X_API_SECRET,
+            accessToken: process.env.X_ACCESS_TOKEN,
+            accessSecret: process.env.X_ACCESS_TOKEN_SECRET,
+          });
           
-          $COMMIT_URL
+          // English version
+          const englishTweet = `🚀 Update: ${process.env.COMMIT_MSG}
           
-          #AIAgent #LocalLLM #Python"
+          By: ${process.env.COMMIT_AUTHOR}
           
-          echo "Tweet to post:"
-          echo "$TWEET"
+          ${process.env.COMMIT_URL}
+          
+          #AIAgent #LocalLLM #Python`;
+          
+          // Chinese version
+          const chineseTweet = `🚀 更新: ${process.env.COMMIT_MSG}
+          
+          作者: ${process.env.COMMIT_AUTHOR}
+          
+          ${process.env.COMMIT_URL}
+          
+          #AI代理 #本地LLM #Python`;
+          
+          (async () => {
+            try {
+              // Post English tweet
+              console.log('\n📝 Posting English version...');
+              const englishPost = await client.v2.tweet(englishTweet);
+              console.log('✅ English tweet posted successfully!');
+              console.log('Tweet ID:', englishPost.data.id);
+              console.log('Tweet text:', englishTweet);
+              
+              // Wait 2 seconds between posts
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              
+              // Post Chinese tweet
+              console.log('\n📝 Posting Chinese version...');
+              const chinesePost = await client.v2.tweet(chineseTweet);
+              console.log('✅ Chinese tweet posted successfully!');
+              console.log('Tweet ID:', chinesePost.data.id);
+              console.log('Tweet text:', chineseTweet);
+              
+              console.log('\n✨ Both tweets posted successfully!');
+            } catch (error) {
+              console.error('❌ Failed to post tweet:', error.message);
+              process.exit(1);
+            }
+          })();
+          EOF
+          
+          # Run the script
+          node post_tweets.js
