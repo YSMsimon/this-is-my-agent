@@ -11,8 +11,8 @@ from tools.manager import tool_handler, tools as default_tools
 
 colorama_init(autoreset=False)
 
-litellm.drop_params = True       # silently drop params unsupported by a given provider
-litellm.suppress_debug_info = True  # suppress "Give Feedback" banners on errors
+litellm.drop_params = True
+litellm.suppress_debug_info = True
 
 _SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
@@ -73,12 +73,17 @@ class Agent:
         )
 
         full_content = ''
+        full_reasoning = ''
         tool_calls_raw = {}  # index -> {id, name, arguments}
         first_token = True
 
         try:
             async for chunk in response:
                 delta = chunk.choices[0].delta
+
+                reasoning = getattr(delta, 'reasoning_content', None)
+                if reasoning:
+                    full_reasoning += reasoning
 
                 if delta.content:
                     if first_token:
@@ -121,9 +126,11 @@ class Agent:
 
         tool_calls = [tool_calls_raw[i] for i in sorted(tool_calls_raw)] if tool_calls_raw else []
 
-        # Build assistant message — include tool_calls field when present so
-        # the subsequent tool messages are correctly linked for strict providers.
+        # Build assistant message — include tool_calls and reasoning_content when
+        # present so subsequent turns are correctly linked for strict providers.
         assistant_msg: Dict = {'role': 'assistant', 'content': full_content or None}
+        if full_reasoning:
+            assistant_msg['reasoning_content'] = full_reasoning
         if tool_calls:
             assistant_msg['tool_calls'] = [
                 {

@@ -24,7 +24,7 @@ class EvaluatorAgent(Agent):
             for i, r in enumerate(results)
         )
         messages = [
-            {'role': 'system', 'content': self.cfg.evaluator_prompt},
+            {'role': 'system', 'content': self.cfg.evaluator_prompt + '\nRespond with JSON.'},
             {'role': 'user', 'content': f"Original request: {user_message}\n\nCompleted tasks:\n{summary}"}
         ]
         for attempt in range(2):

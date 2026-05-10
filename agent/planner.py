@@ -19,7 +19,7 @@ class PlannerAgent(Agent):
 
     async def run(self, user_message: str) -> list[str]:
         messages = [
-            {'role': 'system', 'content': self.cfg.planner_prompt},
+            {'role': 'system', 'content': self.cfg.planner_prompt + '\nRespond with JSON.'},
             {'role': 'user', 'content': user_message}
         ]
         for attempt in range(2):
