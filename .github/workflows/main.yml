@@ -1,0 +1,66 @@
+name: Post to X on Announce
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  post-to-x:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if commit contains [announce]
+        id: check_announce
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          if [[ "$COMMIT_MSG" == *"[announce]"* ]]; then
+            echo "should_post=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_post=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract commit info
+        if: steps.check_announce.outputs.should_post == 'true'
+        id: commit_info
+        run: |
+          COMMIT_HASH=$(git log -1 --pretty=%h)
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          COMMIT_AUTHOR=$(git log -1 --pretty=%an)
+          COMMIT_URL="https://github.com/YSMsimon/this-is-my-agent/commit/$COMMIT_HASH"
+          
+          # Remove [announce] tag from message for cleaner output
+          CLEAN_MSG="${COMMIT_MSG//\[announce\]/}"
+          CLEAN_MSG=$(echo "$CLEAN_MSG" | xargs)
+          
+          echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "commit_msg=$CLEAN_MSG" >> $GITHUB_OUTPUT
+          echo "commit_author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
+          echo "commit_url=$COMMIT_URL" >> $GITHUB_OUTPUT
+
+      - name: Post to X
+        if: steps.check_announce.outputs.should_post == 'true'
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          COMMIT_MSG: ${{ steps.commit_info.outputs.commit_msg }}
+          COMMIT_AUTHOR: ${{ steps.commit_info.outputs.commit_author }}
+          COMMIT_URL: ${{ steps.commit_info.outputs.commit_url }}
+        run: |
+          # Create tweet message
+          TWEET="🚀 Update: ${COMMIT_MSG}
+          
+          By: $COMMIT_AUTHOR
+          
+          $COMMIT_URL
+          
+          #AIAgent #LocalLLM #Python"
+          
+          echo "Tweet to post:"
+          echo "$TWEET"
