@@ -1,5 +1,5 @@
 name: Post to X on Announce
-
+# This workflow listens for pushes to the master branch. If the commit message contains
 on:
   push:
     branches:
