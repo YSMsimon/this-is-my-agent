@@ -3,7 +3,6 @@ import re
 from adapters import Adapter
 from common.config import config
 
-
 class ProfileManager:
     def __init__(self, db, user_id: str, cfg: config, adapter: Adapter):
         self.db = db
