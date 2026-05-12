@@ -22,7 +22,7 @@ class MainAgent(Agent):
         self.db = db
         self.user_id = user_id
         self.todo_manager = ToDoManager()
-        self._profile = ProfileManager(db, user_id, cfg)
+        self._profile = ProfileManager(db, user_id, cfg, self.adapter)
         self._last_user_message = ''
         self.mode = 'simple'
 
@@ -135,16 +135,15 @@ class MainAgent(Agent):
         return list(await asyncio.gather(*[run_one(t, i) for i, t in enumerate(tasks)]))
 
     async def _synthesize(self, user_message: str, results: list[dict]) -> str:
-        import litellm
         summary = "\n\n".join(f"Task: {r['task']}\nResult: {r['result']}" for r in results)
-        resp = await litellm.acompletion(
+        resp = self.adapter.complete(
             model=self.cfg.model,
             messages=[
                 {'role': 'system', 'content': 'Synthesize the task results into a clear, complete answer.'},
                 {'role': 'user', 'content': f"Original request: {user_message}\n\nResults:\n{summary}"}
             ]
         )
-        answer = resp.choices[0].message.content.strip()
+        answer = resp.content.strip()
         await self.db.add_message(self.user_id, 'user', user_message)
         await self.db.add_message(self.user_id, 'assistant', answer)
         await aprint(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} {answer}')

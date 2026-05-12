@@ -1,14 +1,15 @@
 import json
 import re
-import litellm
+from adapters import Adapter
 from common.config import config
 
 
 class ProfileManager:
-    def __init__(self, db, user_id: str, cfg: config):
+    def __init__(self, db, user_id: str, cfg: config, adapter: Adapter):
         self.db = db
         self.user_id = user_id
         self.cfg = cfg
+        self.adapter = adapter
 
     async def update(self, user_message: str, assistant_response: str):
         try:
@@ -27,11 +28,11 @@ class ProfileManager:
 
         messages = [{'role': 'user', 'content': prompt}]
         for _ in range(3):
-            resp = await litellm.acompletion(
+            resp = self.adapter.complete(
                 model=self.cfg.profile_model,
                 messages=messages,
             )
-            text = resp.choices[0].message.content.strip()
+            text = resp.content.strip()
             match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
             if match:
                 text = match.group(1).strip()
@@ -39,7 +40,7 @@ class ProfileManager:
                 await self.db.update_user_profile(self.user_id, json.loads(text))
                 return
             except json.JSONDecodeError as e:
-                messages.append({'role': 'assistant', 'content': resp.choices[0].message.content})
+                messages.append({'role': 'assistant', 'content': resp.content})
                 messages.append({'role': 'user', 'content': (
                     f"Your previous response failed JSON parsing.\n"
                     f"Error: {e}\n"

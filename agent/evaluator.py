@@ -1,5 +1,4 @@
 import re
-import litellm
 from pydantic import BaseModel, ValidationError
 from agent.base import Agent
 from common.config import config
@@ -28,13 +27,13 @@ class EvaluatorAgent(Agent):
             {'role': 'user', 'content': f"Original request: {user_message}\n\nCompleted tasks:\n{summary}"}
         ]
         for attempt in range(2):
-            resp = await litellm.acompletion(
+            resp = self.adapter.complete(
                 model=self.cfg.evaluator_model,
                 messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0,
             )
-            content = resp.choices[0].message.content
+            content = resp.content
             try:
                 return EvalOutput.model_validate_json(_strip_fence(content))
             except (ValidationError, ValueError):

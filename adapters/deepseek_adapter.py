@@ -1,5 +1,5 @@
 from typing import Callable
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 from common.config import config
 from adapters.schema import Response
 
@@ -10,10 +10,16 @@ class DeepSeekAdapter:
             api_key=cfg.deepseek_api_key,
             base_url="https://api.deepseek.com"
         )
-        self._response: Response | None = None
 
     def complete(self, messages: list[dict], model: str, tools: list[dict] | None = None,
-                 stream: bool = False, on_chunk: Callable[[str], None] | None = None) -> Response:
+                 stream: bool = False, on_chunk: Callable[[str], None] | None = None, **kwargs) -> Response:
+        try:
+            return self._complete(messages, model, tools, stream, on_chunk, **kwargs)
+        except RateLimitError as e:
+            raise RuntimeError(f"DeepSeek rate limit reached: {e}") from e
+
+    def _complete(self, messages: list[dict], model: str, tools: list[dict] | None = None,
+                  stream: bool = False, on_chunk: Callable[[str], None] | None = None, **kwargs) -> Response:
         if stream:
             content = ''
             reasoning = ''
@@ -21,7 +27,7 @@ class DeepSeekAdapter:
             tool_calls_raw: dict[int, dict] = {}
 
             for chunk in self.client.chat.completions.create(
-                model=model, messages=messages, tools=tools or None, stream=True
+                model=model, messages=messages, tools=tools or None, stream=True, **kwargs
             ):
                 delta = chunk.choices[0].delta
                 finish_reason = chunk.choices[0].finish_reason or finish_reason
@@ -44,7 +50,7 @@ class DeepSeekAdapter:
                         if tc.function.arguments:
                             tool_calls_raw[idx]['arguments'] += tc.function.arguments
 
-            self._response = Response(
+            return Response(
                 content=content,
                 reasoning=reasoning,
                 tool_calls=[
@@ -57,10 +63,10 @@ class DeepSeekAdapter:
             )
         else:
             raw = self.client.chat.completions.create(
-                model=model, messages=messages, tools=tools or None,
+                model=model, messages=messages, tools=tools or None, **kwargs
             )
             msg = raw.choices[0].message
-            self._response = Response(
+            return Response(
                 content=msg.content or '',
                 reasoning=getattr(msg, 'reasoning_content', '') or '',
                 tool_calls=[
@@ -71,9 +77,3 @@ class DeepSeekAdapter:
                 model=raw.model,
                 finish_reason=raw.choices[0].finish_reason,
             )
-
-        return self._response
-
-    @property
-    def response(self) -> Response:
-        return self._response

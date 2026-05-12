@@ -1,5 +1,4 @@
 import re
-import litellm
 from pydantic import BaseModel, ValidationError
 from agent.base import Agent
 from common.config import config
@@ -23,13 +22,13 @@ class PlannerAgent(Agent):
             {'role': 'user', 'content': user_message}
         ]
         for attempt in range(2):
-            resp = await litellm.acompletion(
+            resp = self.adapter.complete(
                 model=self.cfg.planner_model,
                 messages=messages,
                 response_format={"type": "json_object"},
                 temperature=0,
             )
-            content = resp.choices[0].message.content
+            content = resp.content
             try:
                 return PlanOutput.model_validate_json(_strip_fence(content)).tasks
             except (ValidationError, ValueError):

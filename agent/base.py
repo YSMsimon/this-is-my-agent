@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 
 from colorama import Fore, Style, init as colorama_init
 
+from adapters import Adapter
 from common.config import config
 from tools.manager import tool_handler, tools as default_tools
 
@@ -30,6 +31,7 @@ class Agent:
         self.cfg = cfg
         self.tools = tools if tools is not None else default_tools
         self._system_prompt = ''
+        self.adapter = Adapter(cfg)
 
     def _chunk(self, text: str, size: int = 1500, overlap: int = 200) -> list:
         chunks, start = [], 0
@@ -39,9 +41,7 @@ class Agent:
         return chunks
 
     async def get_embedding(self, text: str) -> list:
-        response = await litellm.aembedding(model=self.cfg.embedding_model, input=[text])
-        item = response.data[0]
-        return item['embedding'] if isinstance(item, dict) else item.embedding
+        return self.adapter.embed(text, model=self.cfg.embedding_model)
 
     def _task_complete(self) -> bool:
         return True
@@ -62,52 +62,28 @@ class Agent:
         stop = asyncio.Event()
         spinner = asyncio.create_task(_spin(stop))
 
-        response = await litellm.acompletion(
-            model=self.cfg.model,
-            messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
-            tools=self.tools if self.tools else None,
-            stream=True,
-        )
+        first_chunk = True
 
-        full_content = ''
-        full_reasoning = ''
-        tool_calls_raw = {}  # index -> {id, name, arguments}
-        first_token = True
+        def on_chunk(chunk: str):
+            nonlocal first_chunk
+            if first_chunk:
+                stop.set()
+                print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
+                first_chunk = False
+            print(f'{Fore.GREEN}{chunk}{Style.RESET_ALL}', end='', flush=True)
 
         try:
-            async for chunk in response:
-                delta = chunk.choices[0].delta
-
-                reasoning = getattr(delta, 'reasoning_content', None)
-                if reasoning:
-                    full_reasoning += reasoning
-
-                if delta.content:
-                    if first_token:
-                        stop.set()
-                        await spinner
-                        print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
-                        first_token = False
-                    full_content += delta.content
-                    print(f'{Fore.GREEN}{delta.content}{Style.RESET_ALL}', end='', flush=True)
-
-                if delta.tool_calls:
-                    for tc_delta in delta.tool_calls:
-                        idx = tc_delta.index
-                        if idx not in tool_calls_raw:
-                            tool_calls_raw[idx] = {'id': '', 'name': '', 'arguments': ''}
-                        if tc_delta.id:
-                            tool_calls_raw[idx]['id'] = tc_delta.id
-                        if tc_delta.function:
-                            if tc_delta.function.name:
-                                tool_calls_raw[idx]['name'] += tc_delta.function.name
-                            if tc_delta.function.arguments:
-                                tool_calls_raw[idx]['arguments'] += tc_delta.function.arguments
-
-        except litellm.RateLimitError as e:
+            response = self.adapter.complete(
+                messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
+                model=self.cfg.model,
+                tools=self.tools or None,
+                stream=True,
+                on_chunk=on_chunk,
+            )
+        except RuntimeError as e:
             stop.set()
             await spinner
-            print(f'\n{Fore.RED}Rate limit reached: {e.message if hasattr(e, "message") else e}{Style.RESET_ALL}')
+            print(f'\n{Fore.RED}{e}{Style.RESET_ALL}')
             return messages
         except Exception as e:
             stop.set()
@@ -115,13 +91,15 @@ class Agent:
             print(f'\n{Fore.RED}LLM error: {type(e).__name__}: {str(e)[:200]}{Style.RESET_ALL}')
             return messages
 
-        if not first_token:
-            print()
-
         stop.set()
         await spinner
 
-        tool_calls = [tool_calls_raw[i] for i in sorted(tool_calls_raw)] if tool_calls_raw else []
+        if response.content:
+            print()
+
+        full_content = response.content
+        full_reasoning = response.reasoning
+        tool_calls = response.tool_calls
 
         # Build assistant message — include tool_calls and reasoning_content when
         # present so subsequent turns are correctly linked for strict providers.
@@ -129,14 +107,7 @@ class Agent:
         if full_reasoning:
             assistant_msg['reasoning_content'] = full_reasoning
         if tool_calls:
-            assistant_msg['tool_calls'] = [
-                {
-                    'id': tc['id'],
-                    'type': 'function',
-                    'function': {'name': tc['name'], 'arguments': tc['arguments']},
-                }
-                for tc in tool_calls
-            ]
+            assistant_msg['tool_calls'] = tool_calls
 
         if full_content:
             await self._save_turn({'role': 'assistant', 'content': full_content})
@@ -150,9 +121,9 @@ class Agent:
             return messages
 
         for tc in tool_calls:
-            name = tc['name']
+            name = tc['function']['name']
             try:
-                args = json.loads(tc['arguments']) if tc['arguments'] else {}
+                args = json.loads(tc['function']['arguments']) if tc['function']['arguments'] else {}
             except json.JSONDecodeError:
                 args = {}
             tool_call_id = tc['id']
