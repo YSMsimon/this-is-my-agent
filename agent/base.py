@@ -3,7 +3,6 @@ import itertools
 import json
 from typing import List, Dict, Optional
 
-import litellm
 from colorama import Fore, Style, init as colorama_init
 
 from common.config import config
@@ -11,8 +10,6 @@ from tools.manager import tool_handler, tools as default_tools
 
 colorama_init(autoreset=False)
 
-litellm.drop_params = True
-litellm.suppress_debug_info = True
 
 _SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 

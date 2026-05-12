@@ -15,6 +15,8 @@ class config:
         load_dotenv()
         self.model = os.getenv('MODEL')
         self.deepseek_api_key = os.getenv('DEEPSEEK_API_KEY')
+        self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
+        self.ollama_api_key = os.getenv('OLLAMA_API_KEY', "dummy")
         self.embedding_model = os.getenv('EMBEDDING_MODEL')
         self.profile_model = os.getenv('PROFILE_MODEL')
         self.compact_model = os.getenv('COMPACT_MODEL')
