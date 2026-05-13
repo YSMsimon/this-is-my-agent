@@ -2,7 +2,7 @@
 
 > **This project is actively in development. Expect bugs, incomplete features, and rough edges. Error handling and try/catch coverage will be improved over time.**
 
-A fully async, multi-agent CLI assistant that uses **[litellm](https://github.com/BerriAI/litellm)** as its LLM client — swap between local Ollama models, Gemini, OpenAI, Anthropic, DeepSeek, and more by changing one line in `.env`.
+A fully async, multi-agent CLI assistant with a **custom adapter layer** for LLM providers — swap between local Ollama models, OpenAI, DeepSeek, and more by changing one line in `.env`.
 
 ---
 
@@ -21,6 +21,32 @@ A fully async, multi-agent CLI assistant that uses **[litellm](https://github.co
 ```
 
 All agents inherit from a shared `Agent` base class that handles the streaming LLM loop, tool execution, spinner, and depth limiting. Each subclass overrides only what it needs.
+
+---
+
+## Adapter Architecture
+
+```
+adapters/
+├── __init__.py          # Adapter: unified entry point, routes by provider prefix
+├── schema.py            # Response: canonical output format for all providers
+├── base_adapter.py      # Abstract interface all adapters implement
+├── deepseek_adapter.py  # DeepSeek (OpenAI-compatible client)
+├── ollama_adapter.py    # Ollama (OpenAI-compatible client + embed support)
+├── anthropic_adapter.py # Anthropic
+└── gemini_adapter.py    # Google Gemini
+```
+
+Model strings use a `provider/model` format. The `Adapter` class reads the prefix, routes to the right provider adapter, and strips the prefix before the API call. All adapters return the same `Response` object:
+
+```python
+class Response(BaseModel):
+    content: str
+    tool_calls: list[dict] = []
+    reasoning: str = ''
+    model: str = ''
+    finish_reason: str = ''
+```
 
 ---
 
@@ -82,10 +108,18 @@ Deep mode breaks complex requests into parallel tasks, self-evaluates results, a
 .
 ├── main.py                  # Entry point (async REPL)
 ├── requirements.txt
-├── litellm_config.yml       # LiteLLM proxy config (optional)
 ├── Docker-compose.yml       # PostgreSQL + pgvector
 ├── init.sql                 # DB schema (auto-run on first start)
 ├── .env.example
+│
+├── adapters/
+│   ├── __init__.py          # Adapter: unified router by provider prefix
+│   ├── schema.py            # Response dataclass (canonical output format)
+│   ├── base_adapter.py      # Abstract base adapter interface
+│   ├── deepseek_adapter.py  # DeepSeek provider adapter
+│   ├── ollama_adapter.py    # Ollama provider adapter (+ embeddings)
+│   ├── anthropic_adapter.py # Anthropic provider adapter
+│   └── gemini_adapter.py    # Gemini provider adapter
 │
 ├── agent/
 │   ├── base.py              # Base Agent: streaming loop, tool dispatch, hooks
@@ -184,31 +218,29 @@ This starts a PostgreSQL instance with the pgvector extension on **port 5433**. 
 ### 3. Configure environment variables
 
 ```bash
-cp .env.exmaple .env
+cp .env.example .env
 ```
 
-Edit `.env` — all model strings use litellm format (`provider/model-name`):
+Edit `.env` — model strings use `provider/model` format:
 
 ```env
 # ── Models ───────────────────────────────────────────────────────────────────
-MODEL=gemini/gemini-2.0-flash
+MODEL=deepseek/deepseek-chat
 EMBEDDING_MODEL=ollama/nomic-embed-text
-PROFILE_MODEL=gemini/gemini-2.0-flash
-COMPACT_MODEL=gemini/gemini-2.0-flash
-PLANNER_MODEL=gemini/gemini-2.0-flash
-EVALUATOR_MODEL=gemini/gemini-2.0-flash
+PROFILE_MODEL=deepseek/deepseek-chat
+COMPACT_MODEL=deepseek/deepseek-chat
+PLANNER_MODEL=deepseek/deepseek-chat
+EVALUATOR_MODEL=deepseek/deepseek-chat
 
 # ── Database ─────────────────────────────────────────────────────────────────
 DATABASE_URL=postgresql://myuser:mypassword@localhost:5433/agent_memory
 
 # ── API keys (fill in the provider(s) you use) ───────────────────────────────
-GEMINI_API_KEY=...
+DEEPSEEK_API_KEY=...
 # OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
-# DEEPSEEK_API_KEY=...
 
 # ── Ollama (only if not on default localhost:11434) ───────────────────────────
-# OLLAMA_API_BASE=http://localhost:11434
+# OLLAMA_BASE_URL=http://localhost:11434/v1
 ```
 
 ### 4. Run
@@ -221,16 +253,13 @@ python3 main.py
 
 ## Model String Format
 
-The agent uses litellm, so you can point any model variable at any provider by changing the prefix:
+Model strings follow a `provider/model` format. The adapter layer reads the prefix, routes to the correct provider, and strips it before the API call.
 
 | Provider | Format | Example |
 |----------|--------|---------|
-| Ollama (chat) | `ollama_chat/model` | `ollama_chat/llama3.2` |
-| Ollama (embed) | `ollama/model` | `ollama/nomic-embed-text` |
-| Google Gemini | `gemini/model` | `gemini/gemini-2.0-flash` |
-| OpenAI | `openai/model` | `openai/gpt-4o` |
-| Anthropic | `anthropic/model` | `anthropic/claude-opus-4-5` |
+| Ollama | `ollama/model` | `ollama/llama3.2` |
 | DeepSeek | `deepseek/model` | `deepseek/deepseek-chat` |
+| OpenAI | `openai/model` | `openai/gpt-4o` |
 
 ---
 
@@ -245,23 +274,10 @@ The agent uses litellm, so you can point any model variable at any provider by c
 | `PLANNER_MODEL` | Model for task planning (deep mode) |
 | `EVALUATOR_MODEL` | Model for result evaluation (deep mode) |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `OLLAMA_API_BASE` | Custom Ollama URL (default: `http://localhost:11434`) |
-| `GEMINI_API_KEY` | Google Gemini API key |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
 | `DEEPSEEK_API_KEY` | DeepSeek API key |
-
----
-
-## LiteLLM Proxy (optional)
-
-The included `litellm_config.yml` lets you run a local OpenAI-compatible proxy server that routes requests to any backend. Useful if you want to use the agent from other tools.
-
-```bash
-litellm --config litellm_config.yml --port 4000
-```
-
-Once running, any OpenAI-compatible client can point to `http://localhost:4000` and use the model aliases defined in the config (`main`, `gpt-4o`, `claude-opus`, `gemini-flash`, etc.).
+| `OPENAI_API_KEY` | OpenAI API key |
+| `OLLAMA_BASE_URL` | Custom Ollama URL (default: `http://localhost:11434/v1`) |
+| `OLLAMA_API_KEY` | Ollama API key (default: `dummy`) |
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **本项目正在积极开发中，预计会存在 Bug、功能不完整及粗糙的地方。错误处理与 try/catch 覆盖将逐步完善。**
 
-一个完全基于异步的多智能体 CLI 助手，使用 **[litellm](https://github.com/BerriAI/litellm)** 作为 LLM 客户端 —— 只需修改 `.env` 中的一行，即可在本地 Ollama 模型、Gemini、OpenAI、Anthropic、DeepSeek 等之间自由切换。
+一个完全基于异步的多智能体 CLI 助手，内置**自定义适配器层**用于对接各 LLM 提供商 —— 只需修改 `.env` 中的一行，即可在本地 Ollama 模型、DeepSeek、OpenAI 等之间自由切换。
 
 ---
 
@@ -21,6 +21,32 @@
 ```
 
 所有智能体均继承自共享的 `Agent` 基类，该基类负责处理流式 LLM 循环、工具调度、加载动画和深度限制。每个子类只需重写自己需要的部分。
+
+---
+
+## 适配器架构
+
+```
+adapters/
+├── __init__.py          # Adapter：统一入口，按提供商前缀路由
+├── schema.py            # Response：所有提供商的统一输出格式
+├── base_adapter.py      # 所有适配器须实现的抽象接口
+├── deepseek_adapter.py  # DeepSeek 适配器（兼容 OpenAI 客户端）
+├── ollama_adapter.py    # Ollama 适配器（兼容 OpenAI 客户端 + 支持嵌入）
+├── anthropic_adapter.py # Anthropic 适配器
+└── gemini_adapter.py    # Google Gemini 适配器
+```
+
+模型字符串采用 `提供商/模型名` 格式。`Adapter` 类读取前缀、路由到对应的提供商适配器，并在调用 API 前自动去除前缀。所有适配器均返回统一的 `Response` 对象：
+
+```python
+class Response(BaseModel):
+    content: str
+    tool_calls: list[dict] = []
+    reasoning: str = ''
+    model: str = ''
+    finish_reason: str = ''
+```
 
 ---
 
@@ -82,10 +108,18 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 .
 ├── main.py                  # 入口文件（异步交互式命令行）
 ├── requirements.txt
-├── litellm_config.yml       # LiteLLM 代理配置（可选）
 ├── Docker-compose.yml       # PostgreSQL + pgvector
 ├── init.sql                 # 数据库表结构（首次启动时自动执行）
 ├── .env.example
+│
+├── adapters/
+│   ├── __init__.py          # Adapter：按提供商前缀统一路由
+│   ├── schema.py            # Response 数据类（统一输出格式）
+│   ├── base_adapter.py      # 抽象适配器接口
+│   ├── deepseek_adapter.py  # DeepSeek 适配器
+│   ├── ollama_adapter.py    # Ollama 适配器（含嵌入支持）
+│   ├── anthropic_adapter.py # Anthropic 适配器
+│   └── gemini_adapter.py    # Gemini 适配器
 │
 ├── agent/
 │   ├── base.py              # 基类 Agent：流式循环、工具调度、钩子函数
@@ -184,31 +218,29 @@ docker compose up -d
 ### 3. 配置环境变量
 
 ```bash
-cp .env.exmaple .env
+cp .env.example .env
 ```
 
-编辑 `.env` 文件 —— 所有模型字符串使用 litellm 格式（`提供商/模型名`）：
+编辑 `.env` 文件 —— 模型字符串采用 `提供商/模型名` 格式：
 
 ```env
 # ── 模型 ─────────────────────────────────────────────────────────────────────
-MODEL=gemini/gemini-2.0-flash
+MODEL=deepseek/deepseek-chat
 EMBEDDING_MODEL=ollama/nomic-embed-text
-PROFILE_MODEL=gemini/gemini-2.0-flash
-COMPACT_MODEL=gemini/gemini-2.0-flash
-PLANNER_MODEL=gemini/gemini-2.0-flash
-EVALUATOR_MODEL=gemini/gemini-2.0-flash
+PROFILE_MODEL=deepseek/deepseek-chat
+COMPACT_MODEL=deepseek/deepseek-chat
+PLANNER_MODEL=deepseek/deepseek-chat
+EVALUATOR_MODEL=deepseek/deepseek-chat
 
 # ── 数据库 ───────────────────────────────────────────────────────────────────
 DATABASE_URL=postgresql://myuser:mypassword@localhost:5433/agent_memory
 
 # ── API 密钥（填写你使用的提供商）──────────────────────────────────────────────
-GEMINI_API_KEY=...
+DEEPSEEK_API_KEY=...
 # OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
-# DEEPSEEK_API_KEY=...
 
 # ── Ollama（仅在非默认地址时需要）────────────────────────────────────────────
-# OLLAMA_API_BASE=http://localhost:11434
+# OLLAMA_BASE_URL=http://localhost:11434/v1
 ```
 
 ### 4. 运行
@@ -221,16 +253,13 @@ python3 main.py
 
 ## 模型字符串格式
 
-智能体使用 litellm，通过修改前缀即可切换任意提供商：
+模型字符串采用 `提供商/模型名` 格式，适配器层读取前缀并路由到对应提供商，调用 API 前自动去除前缀。
 
 | 提供商 | 格式 | 示例 |
 |--------|------|------|
-| Ollama（对话） | `ollama_chat/模型名` | `ollama_chat/llama3.2` |
-| Ollama（嵌入） | `ollama/模型名` | `ollama/nomic-embed-text` |
-| Google Gemini | `gemini/模型名` | `gemini/gemini-2.0-flash` |
-| OpenAI | `openai/模型名` | `openai/gpt-4o` |
-| Anthropic | `anthropic/模型名` | `anthropic/claude-opus-4-5` |
+| Ollama | `ollama/模型名` | `ollama/llama3.2` |
 | DeepSeek | `deepseek/模型名` | `deepseek/deepseek-chat` |
+| OpenAI | `openai/模型名` | `openai/gpt-4o` |
 
 ---
 
@@ -245,23 +274,10 @@ python3 main.py
 | `PLANNER_MODEL` | 任务规划使用的模型（深度模式） |
 | `EVALUATOR_MODEL` | 结果评估使用的模型（深度模式） |
 | `DATABASE_URL` | PostgreSQL 连接字符串 |
-| `OLLAMA_API_BASE` | 自定义 Ollama 地址（默认：`http://localhost:11434`） |
-| `GEMINI_API_KEY` | Google Gemini API 密钥 |
-| `OPENAI_API_KEY` | OpenAI API 密钥 |
-| `ANTHROPIC_API_KEY` | Anthropic API 密钥 |
 | `DEEPSEEK_API_KEY` | DeepSeek API 密钥 |
-
----
-
-## LiteLLM 代理（可选）
-
-项目内置的 `litellm_config.yml` 可以启动一个本地 OpenAI 兼容代理服务器，将请求路由到任意后端。适用于需要从其他工具访问智能体的场景。
-
-```bash
-litellm --config litellm_config.yml --port 4000
-```
-
-启动后，任何兼容 OpenAI 的客户端都可以将请求发送到 `http://localhost:4000`，并使用配置文件中定义的模型别名（`main`、`gpt-4o`、`claude-opus`、`gemini-flash` 等）。
+| `OPENAI_API_KEY` | OpenAI API 密钥 |
+| `OLLAMA_BASE_URL` | 自定义 Ollama 地址（默认：`http://localhost:11434/v1`） |
+| `OLLAMA_API_KEY` | Ollama API 密钥（默认：`dummy`） |
 
 ---
 
