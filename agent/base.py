@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import json
+import threading
 from typing import List, Dict, Optional
 
 from colorama import Fore, Style, init as colorama_init
@@ -15,13 +16,15 @@ colorama_init(autoreset=False)
 _SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
 
-async def _spin(stop: asyncio.Event):
+async def _spin(stop: asyncio.Event, done: threading.Event | None = None):
     for frame in itertools.cycle(_SPINNER_FRAMES):
         if stop.is_set():
             break
         print(f'\r{Fore.CYAN}{frame} Thinking…{Style.RESET_ALL}', end='', flush=True)
         await asyncio.sleep(0.08)
     print('\r' + ' ' * 25 + '\r', end='', flush=True)
+    if done:
+        done.set()
 
 
 class Agent:
@@ -60,25 +63,30 @@ class Agent:
             return messages
 
         stop = asyncio.Event()
-        spinner = asyncio.create_task(_spin(stop))
-
+        spinner_done = threading.Event()
+        spinner = asyncio.create_task(_spin(stop, spinner_done))
+        loop = asyncio.get_running_loop()
         first_chunk = True
 
         def on_chunk(chunk: str):
             nonlocal first_chunk
             if first_chunk:
-                stop.set()
-                print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
                 first_chunk = False
+                loop.call_soon_threadsafe(stop.set)
+                spinner_done.wait(timeout=1.0)
+                print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
             print(f'{Fore.GREEN}{chunk}{Style.RESET_ALL}', end='', flush=True)
 
         try:
-            response = self.adapter.complete(
-                messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
-                model=self.cfg.model,
-                tools=self.tools or None,
-                stream=True,
-                on_chunk=on_chunk,
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.adapter.complete(
+                    messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
+                    model=self.cfg.model,
+                    tools=self.tools or None,
+                    stream=True,
+                    on_chunk=on_chunk,
+                )
             )
         except RuntimeError as e:
             stop.set()

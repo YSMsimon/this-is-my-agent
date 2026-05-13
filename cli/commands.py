@@ -71,7 +71,7 @@ class CommandManager:
         if text.strip().lower().startswith('/compact'):
             extra = text.strip()[len('/compact'):].strip().strip('"').strip("'") or None
             print("Compacting history...")
-            compactor = Compactor(self.db, self.user_id, self.cfg)
+            compactor = Compactor(self.db, self.user_id, self.cfg, self.agent.adapter)
             summary = await compactor.compact(extra_prompt=extra)
             await aprint(f"Done. Summary:\n{summary}")
             return True
