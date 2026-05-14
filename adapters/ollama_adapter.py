@@ -24,6 +24,7 @@ class OllamaAdapter:
             model=model, messages=messages, tools=tools or None, **kwargs
         )
         msg = raw.choices[0].message
+        usage = raw.usage
         return Response(
             content=msg.content or '',
             tool_calls=[
@@ -33,17 +34,26 @@ class OllamaAdapter:
             ],
             model=raw.model,
             finish_reason=raw.choices[0].finish_reason,
+            input_tokens=usage.prompt_tokens if usage else 0,
+            output_tokens=usage.completion_tokens if usage else 0,
         )
 
     async def _stream(self, messages, model, tools=None, on_chunk=None, **kwargs) -> Response:
         content = ''
         finish_reason = ''
         tool_calls_raw: dict[int, dict] = {}
+        input_tokens = 0
+        output_tokens = 0
 
         stream = await self.client.chat.completions.create(
-            model=model, messages=messages, tools=tools or None, stream=True, **kwargs
+            model=model, messages=messages, tools=tools or None, stream=True,
+            stream_options={"include_usage": True}, **kwargs
         )
         async for chunk in stream:
+            if chunk.usage:
+                input_tokens = chunk.usage.prompt_tokens
+                output_tokens = chunk.usage.completion_tokens
+                continue
             delta = chunk.choices[0].delta
             finish_reason = chunk.choices[0].finish_reason or finish_reason
             if delta.content:
@@ -71,6 +81,8 @@ class OllamaAdapter:
             ],
             model=model,
             finish_reason=finish_reason,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
     async def embed(self, text: str, model: str) -> list[float]:

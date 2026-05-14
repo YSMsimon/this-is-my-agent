@@ -89,6 +89,16 @@ class MainAgent(Agent):
         messages.append({'role': 'user', 'content': user_message})
         return messages
 
+    def _print_token_summary(self, turn_input: int, turn_output: int):
+        dim = '\033[2m'
+        reset = Style.RESET_ALL
+        total = self.session_input_tokens + self.session_output_tokens
+        print(
+            f"{dim}  ↑ {turn_input:,} ↓ {turn_output:,} tokens"
+            f"  ·  session ↑ {self.session_input_tokens:,} ↓ {self.session_output_tokens:,}"
+            f"  (total {total:,}){reset}"
+        )
+
     async def run(self, user_message: str) -> str:
         if self.mode == 'deep':
             return await self._run_deep(user_message)
@@ -98,7 +108,12 @@ class MainAgent(Agent):
         self.todo_manager = ToDoManager()
         self._system_prompt = await self._build_system_prompt()
         messages = await self._build_messages(user_message)
+        tokens_before = (self.session_input_tokens, self.session_output_tokens)
         final_messages = await self._execute(messages)
+        turn_in = self.session_input_tokens - tokens_before[0]
+        turn_out = self.session_output_tokens - tokens_before[1]
+        if turn_in or turn_out:
+            self._print_token_summary(turn_in, turn_out)
         for msg in reversed(final_messages):
             if isinstance(msg, dict) and msg.get('role') == 'assistant':
                 return msg.get('content', '')
@@ -145,6 +160,7 @@ class MainAgent(Agent):
 
     async def _synthesize(self, user_message: str, results: list[dict]) -> str:
         summary = "\n\n".join(f"Task: {r['task']}\nResult: {r['result']}" for r in results)
+        tokens_before = (self.session_input_tokens, self.session_output_tokens)
         resp = await self.adapter.complete(
             model=self.cfg.model,
             messages=[
@@ -152,8 +168,14 @@ class MainAgent(Agent):
                 {'role': 'user', 'content': f"Original request: {user_message}\n\nResults:\n{summary}"}
             ]
         )
+        self.session_input_tokens += resp.input_tokens
+        self.session_output_tokens += resp.output_tokens
         answer = resp.content.strip()
         await self.db.add_message(self.user_id, 'user', user_message)
         await self.db.add_message(self.user_id, 'assistant', answer)
         print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} {answer}')
+        turn_in = self.session_input_tokens - tokens_before[0]
+        turn_out = self.session_output_tokens - tokens_before[1]
+        if turn_in or turn_out:
+            self._print_token_summary(turn_in, turn_out)
         return answer

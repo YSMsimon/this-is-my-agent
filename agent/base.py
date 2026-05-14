@@ -33,6 +33,8 @@ class Agent:
         self.tools = tools if tools is not None else default_tools
         self._system_prompt = ''
         self.adapter = Adapter(cfg)
+        self.session_input_tokens = 0
+        self.session_output_tokens = 0
 
     def _chunk(self, text: str, size: int = 1500, overlap: int = 200) -> list:
         chunks, start = [], 0
@@ -67,6 +69,8 @@ class Agent:
                     model=self.cfg.model,
                     tools=self.tools or None,
                 )
+                self.session_input_tokens += response.input_tokens
+                self.session_output_tokens += response.output_tokens
             except Exception:
                 return messages
         else:
@@ -110,6 +114,9 @@ class Agent:
                 print('\r' + ' ' * 25 + '\r', end='', flush=True)
             elif response.content:
                 print()
+
+            self.session_input_tokens += response.input_tokens
+            self.session_output_tokens += response.output_tokens
 
         full_content = response.content
         full_reasoning = response.reasoning

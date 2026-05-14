@@ -6,3 +6,5 @@ class Response(BaseModel):
     reasoning: str = ''
     model: str = ''
     finish_reason: str = ''
+    input_tokens: int = 0
+    output_tokens: int = 0
