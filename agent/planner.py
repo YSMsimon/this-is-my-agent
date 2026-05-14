@@ -22,7 +22,7 @@ class PlannerAgent(Agent):
             {'role': 'user', 'content': user_message}
         ]
         for attempt in range(2):
-            resp = self.adapter.complete(
+            resp = await self.adapter.complete(
                 model=self.cfg.planner_model,
                 messages=messages,
                 response_format={"type": "json_object"},

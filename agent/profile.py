@@ -27,7 +27,7 @@ class ProfileManager:
 
         messages = [{'role': 'user', 'content': prompt}]
         for _ in range(3):
-            resp = self.adapter.complete(
+            resp = await self.adapter.complete(
                 model=self.cfg.profile_model,
                 messages=messages,
             )

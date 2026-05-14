@@ -27,7 +27,7 @@ class EvaluatorAgent(Agent):
             {'role': 'user', 'content': f"Original request: {user_message}\n\nCompleted tasks:\n{summary}"}
         ]
         for attempt in range(2):
-            resp = self.adapter.complete(
+            resp = await self.adapter.complete(
                 model=self.cfg.evaluator_model,
                 messages=messages,
                 response_format={"type": "json_object"},

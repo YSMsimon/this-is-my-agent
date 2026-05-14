@@ -23,7 +23,7 @@ class Compactor:
             prompt += f"\n\nAdditional instructions: {extra_prompt}"
         prompt += f"\n\nCONVERSATION:\n{conversation}\n\nSUMMARY:"
 
-        resp = self.adapter.complete(
+        resp = await self.adapter.complete(
             model=self.cfg.compact_model,
             messages=[{'role': 'user', 'content': prompt}]
         )

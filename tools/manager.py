@@ -33,7 +33,6 @@ async def run_bash(command: str) -> str:
 
 
 async def read_file(file_path: str) -> str:
-    print(f"Reading file: {file_path}")
     try:
         return await asyncio.to_thread(_read_file_sync, file_path)
     except Exception as e:
@@ -41,7 +40,6 @@ async def read_file(file_path: str) -> str:
 
 
 async def write_file(file_path: str, content: str) -> str:
-    print(f"Writing file: {file_path}")
     try:
         await asyncio.to_thread(_write_file_sync, file_path, content)
     except Exception as e:
@@ -50,7 +48,6 @@ async def write_file(file_path: str, content: str) -> str:
 
 
 async def edit_file(file_path: str, old: str, new: str) -> str:
-    print(f"Editing file: {file_path}")
     try:
         await asyncio.to_thread(_edit_file_sync, file_path, old, new)
     except Exception as e:
@@ -114,7 +111,6 @@ async def grep(pattern: str, path: str, recursive: bool = True) -> str:
 
 
 async def glob(pattern: str, path: str = '.') -> str:
-    print(f"Searching for files with pattern: {pattern} in path: {path}")
     from pathlib import Path
     try:
         root = Path(path).expanduser().resolve()
@@ -375,8 +371,8 @@ _run_sub_agent_def = {
 # MainAgent in simple mode: full tools + task tracking + user clarification
 simple_tools = tools + [_ask_user_def, _to_do_def]
 
-# ExecutorAgent in deep mode: full tools + user clarification, no task tracking
-executor_tools = tools + [_ask_user_def]
+# ExecutorAgent in deep mode: full tools only — no ask_user (parallel executors can't safely share stdin)
+executor_tools = tools
 
 # Legacy full set (used by acp_agent)
 all_tools = tools + [_ask_user_def, _to_do_def, _run_sub_agent_def]

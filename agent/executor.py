@@ -4,6 +4,8 @@ from common.config import config
 
 
 class ExecutorAgent(Agent):
+    _silent = True  # runs in parallel — no stdout to avoid concurrent write errors
+
     def __init__(self, cfg: config, tools: Optional[List] = None):
         super().__init__(cfg, tools)
 

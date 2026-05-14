@@ -1,7 +1,6 @@
 import asyncio
 import itertools
 import json
-import threading
 from typing import List, Dict, Optional
 
 from colorama import Fore, Style, init as colorama_init
@@ -16,19 +15,18 @@ colorama_init(autoreset=False)
 _SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 
 
-async def _spin(stop: asyncio.Event, done: threading.Event | None = None):
+async def _spin(stop: asyncio.Event):
     for frame in itertools.cycle(_SPINNER_FRAMES):
         if stop.is_set():
             break
         print(f'\r{Fore.CYAN}{frame} Thinking…{Style.RESET_ALL}', end='', flush=True)
         await asyncio.sleep(0.08)
-    print('\r' + ' ' * 25 + '\r', end='', flush=True)
-    if done:
-        done.set()
+    # no cleanup here — caller clears the line
 
 
 class Agent:
     KNOWLEDGE_TOOLS: set = set()
+    _silent: bool = False  # when True: no spinner, no streaming, no stdout (parallel background workers)
 
     def __init__(self, cfg: config, tools: Optional[List] = None):
         self.cfg = cfg
@@ -44,7 +42,7 @@ class Agent:
         return chunks
 
     async def get_embedding(self, text: str) -> list:
-        return self.adapter.embed(text, model=self.cfg.embedding_model)
+        return await self.adapter.embed(text, model=self.cfg.embedding_model)
 
     def _task_complete(self) -> bool:
         return True
@@ -62,48 +60,56 @@ class Agent:
         if _depth >= 30:
             return messages
 
-        stop = asyncio.Event()
-        spinner_done = threading.Event()
-        spinner = asyncio.create_task(_spin(stop, spinner_done))
-        loop = asyncio.get_running_loop()
-        first_chunk = True
+        if self._silent:
+            try:
+                response = await self.adapter.complete(
+                    messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
+                    model=self.cfg.model,
+                    tools=self.tools or None,
+                )
+            except Exception:
+                return messages
+        else:
+            stop = asyncio.Event()
+            spinner = asyncio.create_task(_spin(stop))
+            first_chunk = True
 
-        def on_chunk(chunk: str):
-            nonlocal first_chunk
-            if first_chunk:
-                first_chunk = False
-                loop.call_soon_threadsafe(stop.set)
-                spinner_done.wait(timeout=1.0)
-                print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
-            print(f'{Fore.GREEN}{chunk}{Style.RESET_ALL}', end='', flush=True)
+            def on_chunk(chunk: str):
+                nonlocal first_chunk
+                if first_chunk:
+                    first_chunk = False
+                    stop.set()
+                    # Clear spinner line, then print header — safe because on_chunk is called
+                    # from within the async adapter (event loop thread), between spinner ticks.
+                    print(f'\r{" " * 25}\r{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
+                print(f'{Fore.GREEN}{chunk}{Style.RESET_ALL}', end='', flush=True)
 
-        try:
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.adapter.complete(
+            try:
+                response = await self.adapter.complete(
                     messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
                     model=self.cfg.model,
                     tools=self.tools or None,
                     stream=True,
                     on_chunk=on_chunk,
                 )
-            )
-        except RuntimeError as e:
+            except RuntimeError as e:
+                stop.set()
+                await spinner
+                print(f'\r{" " * 25}\r\n{Fore.RED}{e}{Style.RESET_ALL}')
+                return messages
+            except Exception as e:
+                stop.set()
+                await spinner
+                print(f'\r{" " * 25}\r\n{Fore.RED}LLM error: {type(e).__name__}: {str(e)[:200]}{Style.RESET_ALL}')
+                return messages
+
             stop.set()
             await spinner
-            print(f'\n{Fore.RED}{e}{Style.RESET_ALL}')
-            return messages
-        except Exception as e:
-            stop.set()
-            await spinner
-            print(f'\n{Fore.RED}LLM error: {type(e).__name__}: {str(e)[:200]}{Style.RESET_ALL}')
-            return messages
-
-        stop.set()
-        await spinner
-
-        if response.content:
-            print()
+            if first_chunk:
+                # No content came (tool-call-only response) — clear leftover spinner line
+                print('\r' + ' ' * 25 + '\r', end='', flush=True)
+            elif response.content:
+                print()
 
         full_content = response.content
         full_reasoning = response.reasoning
@@ -135,8 +141,12 @@ class Agent:
             except json.JSONDecodeError:
                 args = {}
             tool_call_id = tc['id']
-            print(f'{Fore.YELLOW}[tool: {name}]{Style.RESET_ALL}', flush=True)
-            result = await self._call_tool(name, args)
+            if not self._silent:
+                print(f'{Fore.YELLOW}[tool: {name}]{Style.RESET_ALL}', flush=True)
+            try:
+                result = await self._call_tool(name, args)
+            except Exception as e:
+                result = f"Tool error ({name}): {e}"
             if name in self.KNOWLEDGE_TOOLS and isinstance(result, str) and result.strip():
                 await self._store_knowledge(args, result)
             await self._save_turn({

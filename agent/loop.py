@@ -2,7 +2,6 @@ import asyncio
 import json
 from typing import List, Dict, Optional
 
-from aioconsole import aprint
 from colorama import Fore, Style
 
 from common.config import config
@@ -128,7 +127,10 @@ class MainAgent(Agent):
 
         async def run_one(task: str, idx: int) -> dict:
             print(f'{Fore.YELLOW}[Executor {idx+1}] {task}{Style.RESET_ALL}')
-            result = await ExecutorAgent(self.cfg, tools=executor_tools).run(task, context)
+            try:
+                result = await ExecutorAgent(self.cfg, tools=executor_tools).run(task, context)
+            except Exception as e:
+                result = f"Executor error: {e}"
             print(f'{Fore.YELLOW}[Executor {idx+1}] done.{Style.RESET_ALL}')
             return {'task': task, 'result': result}
 
@@ -136,7 +138,7 @@ class MainAgent(Agent):
 
     async def _synthesize(self, user_message: str, results: list[dict]) -> str:
         summary = "\n\n".join(f"Task: {r['task']}\nResult: {r['result']}" for r in results)
-        resp = self.adapter.complete(
+        resp = await self.adapter.complete(
             model=self.cfg.model,
             messages=[
                 {'role': 'system', 'content': 'Synthesize the task results into a clear, complete answer.'},
@@ -146,5 +148,5 @@ class MainAgent(Agent):
         answer = resp.content.strip()
         await self.db.add_message(self.user_id, 'user', user_message)
         await self.db.add_message(self.user_id, 'assistant', answer)
-        await aprint(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} {answer}')
+        print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} {answer}')
         return answer

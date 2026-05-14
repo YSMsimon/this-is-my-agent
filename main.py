@@ -1,4 +1,7 @@
 import asyncio
+import fcntl
+import os
+import sys
 from aioconsole import ainput
 from colorama import Fore, Style
 
@@ -9,6 +12,19 @@ from cli.commands import CommandManager
 from tools.manager import simple_tools
 
 
+def _ensure_stdout_blocking():
+    """aioconsole sets stdout O_NONBLOCK when it wires up its async streams.
+    Regular print() calls fail with EAGAIN when the pty buffer fills up.
+    Restore blocking so our sync prints always succeed."""
+    try:
+        fd = sys.stdout.fileno()
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        if flags & os.O_NONBLOCK:
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
+    except Exception:
+        pass
+
+
 async def main():
     db = await DB.create()
     cfg = config()
@@ -17,6 +33,7 @@ async def main():
     try:
         while True:
             user_input = await ainput("User> ")
+            _ensure_stdout_blocking()
             if commands.is_command(user_input):
                 await commands.handle(user_input)
                 continue

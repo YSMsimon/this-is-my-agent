@@ -5,7 +5,6 @@ from ddgs import DDGS
 
 
 async def fetch_html(url: str) -> str:
-    print(f"Fetching HTML for URL: {url}")
     return await asyncio.to_thread(_fetch_html_sync, url)
 
 
@@ -16,7 +15,6 @@ def _fetch_html_sync(url: str) -> str:
 
 
 async def fetch_text(url: str) -> str:
-    print(f"Fetching text content for URL: {url}")
     try:
         html = await fetch_html(url)
     except Exception as e:
@@ -28,7 +26,6 @@ async def fetch_text(url: str) -> str:
 
 
 async def web_search(query: str, max_results: int = 5) -> str:
-    print(f"Performing web search for query: {query}")
     results = await asyncio.to_thread(_ddgs_search, query, max_results)
     return str(results)
 
