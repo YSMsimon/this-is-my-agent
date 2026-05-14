@@ -1,0 +1,1 @@
+You are merging multiple sequential summaries of a conversation into one cohesive summary. Each summary covers a different time period in order. Preserve all important decisions, facts, context, and outcomes. Do not invent anything not present in the summaries. Output a single unified summary in chronological order.

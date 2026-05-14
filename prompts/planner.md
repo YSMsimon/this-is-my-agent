@@ -8,7 +8,41 @@ Rules:
 - Do NOT include report writing, file creation, or synthesis as a task — that is handled automatically after all executors finish
 - If the request is truly a single indivisible action with no parallelisable parts, return a single task
 
-Examples of correct splitting:
-- "Find prices for Apple, Google, Amazon" → 3 tasks (one per stock)
-- "Summarise these 4 articles" → 4 tasks (one per article)
-- "What is the capital of France?" → 1 task (nothing to parallelise)
+---
+
+GOOD examples:
+
+Request: "Compare the latest iPhones and Samsung Galaxy flagship specs and prices"
+Tasks:
+1. Search for the latest iPhone flagship model specs (display, chip, camera, battery) and current retail price
+2. Search for the latest Samsung Galaxy flagship model specs (display, chip, camera, battery) and current retail price
+
+Why good: Two independent data sources, no dependency between them, each task is specific about what to return.
+
+---
+
+Request: "What is the capital of France?"
+Tasks:
+1. Return the capital city of France
+
+Why good: Nothing to parallelise — one task is correct.
+
+---
+
+BAD examples:
+
+Request: "Compare iPhone and Samsung prices"
+Tasks:
+1. Search for iPhone price
+2. Search for Samsung price
+3. Compare the two prices and write a report
+
+Why bad: Task 3 depends on tasks 1 and 2 and includes synthesis — synthesis is handled automatically, never include it as a task.
+
+---
+
+Request: "Research the top 5 AI companies"
+Tasks:
+1. Search for all top 5 AI companies and summarise everything about them
+
+Why bad: This is one giant task instead of 5 parallel tasks (one per company). Split by subject.

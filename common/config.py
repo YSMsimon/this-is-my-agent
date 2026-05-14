@@ -47,6 +47,7 @@ class config:
         self.executor_prompt = _load_prompt("executor.md")
         self.evaluator_prompt = _load_prompt("evaluator.md")
         self.reasoning_prompt = _load_prompt("reasoning.md")
+        self.compact_merge_prompt = _load_prompt("compact_merge.md")
         self._validate()
 
     def _validate(self):
