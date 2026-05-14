@@ -5,15 +5,16 @@ from agent.compact import Compactor
 from common.config import config
 
 COMMANDS = {
-    '/help':              'Show available commands',
-    '/exit':              'Exit the agent',
-    '/delete-profile':    'Delete your saved user profile',
-    '/profile':           'Show your current user profile',
-    '/clear-history':     'Delete all conversation history for your user',
-    '/compact':           'Compact conversation history into a summary',
-    '/compact "<prompt>"':'Compact with extra instructions (e.g. /compact "focus on code decisions")',
-    '/simple':           'Switch to simple conversation mode (faster)',
-    '/deep':             'Switch to deep conversation mode (more costly)'
+    '/help':                        'Show available commands',
+    '/exit':                        'Exit the agent',
+    '/delete-profile':              'Delete your saved user profile',
+    '/profile':                     'Show your current user profile',
+    '/clear-history':               'Delete all conversation history for your user',
+    '/compact':                     'Compact conversation history into a summary',
+    '/compact "<prompt>"':          'Compact with extra instructions (e.g. /compact "focus on code decisions")',
+    '/simple':                      'Switch to simple conversation mode (faster)',
+    '/deep':                        'Switch to deep conversation mode (more costly)',
+    '/context-window <n|off>':      'Limit history to last N messages (e.g. /context-window 50); use "off" to remove limit',
 }
 
 
@@ -84,6 +85,32 @@ class CommandManager:
         if cmd == '/deep':
             self.agent.mode = 'deep'
             print("Switched to deep mode.")
+            return True
+
+        if text.strip().lower().startswith('/context-window'):
+            raw = text.strip()[len('/context-window'):].strip()
+            if not raw:
+                current = self.agent.context_window
+                print(f"context window is currently: {current if current is not None else 'off (no limit)'}")
+                return True
+            if raw.lower() == 'off':
+                await self.db.set_context_window(self.user_id, None)
+                self.agent.context_window = None
+                self.agent._context_window_loaded = True
+                print("context window disabled — full history will be loaded.")
+                return True
+            try:
+                value = int(raw)
+            except ValueError:
+                print(f"Invalid value '{raw}'. Use a positive integer or 'off'.")
+                return True
+            if value <= 0:
+                print("context window must be a positive integer greater than 0.")
+                return True
+            await self.db.set_context_window(self.user_id, value)
+            self.agent.context_window = value
+            self.agent._context_window_loaded = True
+            print(f"context window set to {value} messages.")
             return True
 
         print(f"Unknown command: {cmd}. Type /help to see available commands.")

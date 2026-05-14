@@ -368,13 +368,10 @@ _run_sub_agent_def = {
     }
 }
 
-# MainAgent in simple mode: full tools + task tracking + user clarification
 simple_tools = tools + [_ask_user_def, _to_do_def]
 
-# ExecutorAgent in deep mode: full tools only — no ask_user (parallel executors can't safely share stdin)
 executor_tools = tools
 
-# Legacy full set (used by acp_agent)
 all_tools = tools + [_ask_user_def, _to_do_def, _run_sub_agent_def]
 
 tool_handler = {

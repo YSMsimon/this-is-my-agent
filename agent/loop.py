@@ -24,6 +24,8 @@ class MainAgent(Agent):
         self._profile = ProfileManager(db, user_id, cfg, self.adapter)
         self._last_user_message = ''
         self.mode = 'simple'
+        self.context_window: int | None = None  # None = no limit; loaded lazily from DB
+        self._context_window_loaded = False
 
     def _task_complete(self) -> bool:
         if not self.todo_manager.items:
@@ -63,8 +65,13 @@ class MainAgent(Agent):
         return self.cfg.system_prompt.format(user_profile=profile_text)
 
     async def _build_messages(self, user_message: str) -> List[Dict]:
+        if not self._context_window_loaded:
+            self.context_window = await self.db.get_context_window(self.user_id)
+            self._context_window_loaded = True
+
+        limit = self.context_window if self.context_window is not None else 10000
         history, embedding = await asyncio.gather(
-            self.db.get_recent_history(self.user_id, limit=10000),
+            self.db.get_recent_history(self.user_id, limit=limit),
             self.get_embedding(user_message)
         )
         history, _ = history

@@ -123,6 +123,23 @@ class DB:
             )
         return [{'role': row['role'], 'content': row['content']} for row in rows]
 
+    async def get_context_window(self, user_id: str) -> int | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT context_window FROM user_profiles WHERE user_id = $1",
+                user_id
+            )
+        return row['context_window'] if row else None
+
+    async def set_context_window(self, user_id: str, value: int | None):
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """INSERT INTO user_profiles (user_id, context_window, updated_at)
+                   VALUES ($1, $2, now())
+                   ON CONFLICT (user_id) DO UPDATE SET context_window = $2, updated_at = now()""",
+                user_id, value
+            )
+
     async def set_out_of_context(self, user_id: str):
         async with self._pool.acquire() as conn:
             await conn.execute(
