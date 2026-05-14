@@ -89,8 +89,6 @@ class Agent:
                 print(f'{Fore.GREEN}{chunk}{Style.RESET_ALL}', end='', flush=True)
 
             try:
-                messages = messages * 10000
-
                 response = await self.adapter.complete(
                     messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
                     model=self.cfg.model,

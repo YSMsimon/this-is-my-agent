@@ -1,4 +1,4 @@
-from openai import AsyncOpenAI, RateLimitError, BadRequestError, APIStatusError
+from openai import AsyncOpenAI, RateLimitError, BadRequestError, NotFoundError, APIStatusError
 from common.config import config
 from adapters.schema import Response
 
@@ -22,6 +22,8 @@ class DeepSeekAdapter:
             return await self._complete(messages, model, tools, **kwargs)
         except RateLimitError as e:
             raise RuntimeError(f"DeepSeek rate limit reached: {e}") from e
+        except NotFoundError as e:
+            raise RuntimeError(f"Model not found: {model}") from e
         except BadRequestError as e:
             if _is_context_exceeded(e):
                 raise RuntimeError("context_window_exceeded") from e

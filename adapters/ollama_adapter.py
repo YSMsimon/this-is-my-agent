@@ -1,4 +1,4 @@
-from openai import AsyncOpenAI, RateLimitError, BadRequestError
+from openai import AsyncOpenAI, RateLimitError, BadRequestError, NotFoundError
 from common.config import config
 from adapters.schema import Response
 
@@ -23,6 +23,8 @@ class OllamaAdapter:
             return await self._complete(messages, model, tools, **kwargs)
         except RateLimitError as e:
             raise RuntimeError(f"Ollama rate limit reached: {e}") from e
+        except NotFoundError as e:
+            raise RuntimeError(f"Model not found: {model}") from e
         except BadRequestError as e:
             if _is_context_exceeded(e):
                 raise RuntimeError("context_window_exceeded") from e
