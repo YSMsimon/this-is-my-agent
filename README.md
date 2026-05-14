@@ -183,6 +183,16 @@ Deep mode breaks complex requests into parallel tasks, self-evaluates results, a
 | `/clear-history` | Delete all conversation history |
 | `/compact` | Summarise and compress conversation history |
 | `/compact "focus on X"` | Compact with extra instructions |
+| `/context-window <n\|off>` | Limit history to last N messages; `off` removes the limit |
+| `/model` | Show all current model settings |
+| `/model <provider/model>` | Change the main model (e.g. `/model deepseek/deepseek-chat`) |
+| `/model <role> <provider/model>` | Change a sub-model: `compact`, `planner`, `evaluator`, `profile` |
+| `/apikey deepseek <key>` | Update DeepSeek API key — writes directly to `.env` |
+| `/apikey ollama <key>` | Update Ollama API key — writes directly to `.env` |
+
+**Model preferences** (`/model`) are saved to the database and restored automatically on the next launch. Sub-models (`compact`, `planner`, `evaluator`, `profile`) default to `MODEL` if not set — database values override `.env`.
+
+**API keys** (`/apikey`) are written directly to your `.env` file — the file is always the source of truth. Editing `.env` manually and using `/apikey` are equivalent; there is no separate DB copy that could conflict.
 
 ---
 

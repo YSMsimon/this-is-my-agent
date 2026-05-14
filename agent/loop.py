@@ -34,8 +34,9 @@ class MainAgent(Agent):
         self._profile = ProfileManager(db, user_id, cfg, self.adapter)
         self._last_user_message = ''
         self.mode = 'simple'
-        self.context_window: int | None = None  # None = no limit; loaded lazily from DB
+        self.context_window: int | None = None
         self._context_window_loaded = False
+        self._settings_loaded = False
 
     def _task_complete(self) -> bool:
         if not self.todo_manager.items:
@@ -74,7 +75,25 @@ class MainAgent(Agent):
         profile_text = json.dumps(profile, indent=2) if profile else "No profile yet."
         return self.cfg.system_prompt.format(user_profile=profile_text)
 
+    async def _load_user_settings(self):
+        if self._settings_loaded:
+            return
+        settings = await self.db.get_user_settings(self.user_id)
+        if settings.get('model'):
+            self.cfg.model = settings['model']
+        if settings.get('compact_model'):
+            self.cfg.compact_model = settings['compact_model']
+        if settings.get('planner_model'):
+            self.cfg.planner_model = settings['planner_model']
+        if settings.get('evaluator_model'):
+            self.cfg.evaluator_model = settings['evaluator_model']
+        if settings.get('profile_model'):
+            self.cfg.profile_model = settings['profile_model']
+        self._settings_loaded = True
+
     async def _build_messages(self, user_message: str) -> List[Dict]:
+        if not self._settings_loaded:
+            await self._load_user_settings()
         if not self._context_window_loaded:
             self.context_window = await self.db.get_context_window(self.user_id)
             self._context_window_loaded = True

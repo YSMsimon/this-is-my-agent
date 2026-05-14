@@ -183,6 +183,16 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 | `/clear-history` | 清除所有对话历史 |
 | `/compact` | 将对话历史压缩为摘要 |
 | `/compact "关注 X"` | 带额外指令的压缩 |
+| `/context-window <n\|off>` | 限制加载最近 N 条历史；`off` 取消限制 |
+| `/model` | 显示当前所有模型配置 |
+| `/model <提供商/模型名>` | 更改主模型（如 `/model deepseek/deepseek-chat`） |
+| `/model <角色> <提供商/模型名>` | 更改子模型：`compact`、`planner`、`evaluator`、`profile` |
+| `/apikey deepseek <密钥>` | 更新 DeepSeek API 密钥 — 直接写入 `.env` 文件 |
+| `/apikey ollama <密钥>` | 更新 Ollama API 密钥 — 直接写入 `.env` 文件 |
+
+**模型偏好**（`/model`）保存至数据库，下次启动时自动恢复。子模型（`compact`、`planner`、`evaluator`、`profile`）若未单独设置则默认使用主 `MODEL`，数据库中的值优先于 `.env`。
+
+**API 密钥**（`/apikey`）直接写入 `.env` 文件，该文件始终是唯一来源。手动编辑 `.env` 与使用 `/apikey` 命令效果完全相同，不存在数据库副本与文件内容冲突的问题。
 
 ---
 

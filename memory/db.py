@@ -131,6 +131,32 @@ class DB:
             )
         return row['context_window'] if row else None
 
+    _SETTING_COLUMNS = {
+        'model', 'compact_model', 'planner_model', 'evaluator_model', 'profile_model',
+    }
+
+    async def get_user_settings(self, user_id: str) -> dict:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT model, compact_model, planner_model, evaluator_model, profile_model
+                   FROM user_profiles WHERE user_id = $1""",
+                user_id
+            )
+        if not row:
+            return {}
+        return {k: v for k, v in dict(row).items() if v is not None}
+
+    async def set_user_setting(self, user_id: str, key: str, value: str | None):
+        if key not in self._SETTING_COLUMNS:
+            raise ValueError(f"Unknown setting: {key}")
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                f"""INSERT INTO user_profiles (user_id, {key}, updated_at)
+                    VALUES ($1, $2, now())
+                    ON CONFLICT (user_id) DO UPDATE SET {key} = $2, updated_at = now()""",
+                user_id, value
+            )
+
     async def set_context_window(self, user_id: str, value: int | None):
         async with self._pool.acquire() as conn:
             await conn.execute(

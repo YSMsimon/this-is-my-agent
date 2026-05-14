@@ -14,14 +14,24 @@ CREATE INDEX IF NOT EXISTS idx_llm_memory_user_time
     ON llm_memory (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_profiles (
-    user_id        TEXT PRIMARY KEY,
-    preferences    JSONB DEFAULT '{}',
-    context_window INT  DEFAULT NULL,  -- NULL = no limit
-    updated_at     TIMESTAMP DEFAULT now()
+    user_id         TEXT PRIMARY KEY,
+    preferences     JSONB DEFAULT '{}',
+    context_window  INT  DEFAULT NULL,
+    model           TEXT DEFAULT NULL,
+    compact_model   TEXT DEFAULT NULL,
+    planner_model   TEXT DEFAULT NULL,
+    evaluator_model TEXT DEFAULT NULL,
+    profile_model   TEXT DEFAULT NULL,
+    updated_at      TIMESTAMP DEFAULT now()
 );
 
--- Idempotent migration: adds the column if this DB was created before it existed
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS context_window INT DEFAULT NULL;
+-- Idempotent migrations for existing DBs
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS context_window  INT  DEFAULT NULL;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS model           TEXT DEFAULT NULL;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS compact_model   TEXT DEFAULT NULL;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS planner_model   TEXT DEFAULT NULL;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evaluator_model TEXT DEFAULT NULL;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS profile_model   TEXT DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS knowledge_base (
     id          SERIAL PRIMARY KEY,

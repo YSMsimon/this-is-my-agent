@@ -1,15 +1,30 @@
 import sys
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 import os
 
 _PROJECT_ROOT = Path(__file__).parent.parent
+_ENV_PATH = _PROJECT_ROOT / ".env"
 WORKDIR = Path().cwd()
 _PROMPTS_DIR = _PROJECT_ROOT / "prompts"
 
 
 def _load_prompt(name: str) -> str:
     return (_PROMPTS_DIR / name).read_text(encoding="utf-8")
+
+
+def write_env_key(key: str, value: str):
+    text = _ENV_PATH.read_text() if _ENV_PATH.exists() else ''
+    pattern = re.compile(rf'^{re.escape(key)}\s*=.*$', re.MULTILINE)
+    new_line = f'{key}={value}'
+    if pattern.search(text):
+        text = pattern.sub(new_line, text)
+    else:
+        text = text.rstrip('\n') + f'\n{new_line}\n'
+    _ENV_PATH.write_text(text)
+    os.environ[key] = value
+    load_dotenv(dotenv_path=_ENV_PATH, override=True)
 
 
 class config:

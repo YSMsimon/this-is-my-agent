@@ -2,7 +2,7 @@ import sys
 import json
 from aioconsole import ainput, aprint
 from agent.compact import Compactor
-from common.config import config
+from common.config import config, write_env_key
 
 COMMANDS = {
     '/help':                        'Show available commands',
@@ -14,8 +14,14 @@ COMMANDS = {
     '/compact "<prompt>"':          'Compact with extra instructions (e.g. /compact "focus on code decisions")',
     '/simple':                      'Switch to simple conversation mode (faster)',
     '/deep':                        'Switch to deep conversation mode (more costly)',
-    '/context-window <n|off>':      'Limit history to last N messages (e.g. /context-window 50); use "off" to remove limit',
+    '/context-window <n|off>':      'Limit history to last N messages; use "off" to remove limit',
+    '/model':                       'Show all current model settings',
+    '/model <model>':               'Change main model (e.g. /model deepseek/deepseek-chat)',
+    '/model <role> <model>':        'Change a sub-model role: compact, planner, evaluator, profile',
+    '/apikey <provider> <key>':     'Change API key for a provider: deepseek, ollama',
 }
+
+_SUB_MODELS = {'compact', 'planner', 'evaluator', 'profile'}
 
 
 class CommandManager:
@@ -34,7 +40,7 @@ class CommandManager:
         if cmd == '/help':
             print("\nAvailable commands:")
             for name, desc in COMMANDS.items():
-                print(f"  {name:<20} {desc}")
+                print(f"  {name:<30} {desc}")
             print()
             return True
 
@@ -91,7 +97,7 @@ class CommandManager:
             raw = text.strip()[len('/context-window'):].strip()
             if not raw:
                 current = self.agent.context_window
-                print(f"context window is currently: {current if current is not None else 'off (no limit)'}")
+                print(f"context window: {current if current is not None else 'off (no limit)'}")
                 return True
             if raw.lower() == 'off':
                 await self.db.set_context_window(self.user_id, None)
@@ -113,5 +119,62 @@ class CommandManager:
             print(f"context window set to {value} messages.")
             return True
 
-        print(f"Unknown command: {cmd}. Type /help to see available commands.")
+        if text.strip().lower().startswith('/model'):
+            raw = text.strip()[len('/model'):].strip()
+            if not raw:
+                cfg = self.cfg
+                default = '(default)'
+                print(f"  MODEL:           {cfg.model}")
+                print(f"  COMPACT_MODEL:   {cfg.compact_model}{'' if cfg.compact_model != cfg.model else '  ' + default}")
+                print(f"  PLANNER_MODEL:   {cfg.planner_model}{'' if cfg.planner_model != cfg.model else '  ' + default}")
+                print(f"  EVALUATOR_MODEL: {cfg.evaluator_model}{'' if cfg.evaluator_model != cfg.model else '  ' + default}")
+                print(f"  PROFILE_MODEL:   {cfg.profile_model}{'' if cfg.profile_model != cfg.model else '  ' + default}")
+                return True
+            parts = raw.split(None, 1)
+            # normalise role: accept 'compact', 'compact_model', 'COMPACT_MODEL' etc.
+            role_raw = parts[0].lower().removesuffix('_model')
+            if len(parts) == 2 and role_raw in _SUB_MODELS:
+                model_str = parts[1]
+                if '/' not in model_str:
+                    print(f"Model must be in 'provider/model' format, e.g. deepseek/deepseek-chat")
+                    return True
+                db_key = f"{role_raw}_model"
+                await self.db.set_user_setting(self.user_id, db_key, model_str)
+                setattr(self.cfg, db_key, model_str)
+                print(f"{role_raw} model set to {model_str}")
+            elif len(parts) == 2 and '/' not in parts[0]:
+                # two words but first isn't a known role
+                print(f"Unknown role '{parts[0]}'. Use: compact, planner, evaluator, profile")
+            else:
+                model_str = parts[0]
+                if '/' not in model_str:
+                    print(f"Model must be in 'provider/model' format, e.g. deepseek/deepseek-chat")
+                    return True
+                await self.db.set_user_setting(self.user_id, 'model', model_str)
+                self.cfg.model = model_str
+                print(f"Model set to {model_str}")
+            return True
+
+        if text.strip().lower().startswith('/apikey'):
+            raw = text.strip()[len('/apikey'):].strip()
+            parts = raw.split(None, 1)
+            if len(parts) != 2:
+                print("Usage: /apikey <provider> <key>  (providers: deepseek, ollama)")
+                return True
+            provider, key = parts[0].lower(), parts[1].strip()
+            if provider == 'deepseek':
+                write_env_key('DEEPSEEK_API_KEY', key)
+                self.cfg.deepseek_api_key = key
+                self.agent.adapter._providers.pop('deepseek', None)
+                print("DeepSeek API key updated in .env.")
+            elif provider == 'ollama':
+                write_env_key('OLLAMA_API_KEY', key)
+                self.cfg.ollama_api_key = key
+                self.agent.adapter._providers.pop('ollama', None)
+                print("Ollama API key updated in .env.")
+            else:
+                print(f"Unknown provider '{provider}'. Supported: deepseek, ollama")
+            return True
+
+        print(f"Unknown command: {text.strip()}. Type /help to see available commands.")
         return True
