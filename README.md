@@ -80,7 +80,13 @@ User Input
     ▼
 PlannerAgent ──► [ task1, task2, task3, ... ]
     │
-    ▼  (asyncio.gather — all run in parallel)
+    ▼
+ReasoningStep (main agent thinks through the plan)
+  - Are tasks in the right order?
+  - Dependencies between tasks?
+  - Risks or constraints executors should know?
+    │
+    ▼  (asyncio.gather — all run in parallel, with reasoning as context)
 ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
     │                  │                  │
     └──────────────────┴──────────────────┘
@@ -98,7 +104,7 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
           Response          EvaluatorAgent (re-evaluate)
 ```
 
-Deep mode breaks complex requests into parallel tasks, self-evaluates results, and spawns targeted fix executors if issues are found — before synthesising a final answer.
+Deep mode adds a **reasoning step** between planning and execution. After the planner produces tasks, the main agent thinks through the plan — checking task order, dependencies, and risks — before executors start. This reasoning is passed to every executor as additional context. The prompt for this step lives in `prompts/reasoning.md` and can be edited to tune the behaviour.
 
 ---
 

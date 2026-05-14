@@ -148,6 +148,23 @@ class MainAgent(Agent):
                 return msg.get('content', '')
         return ''
 
+    async def _reason_about_plan(self, user_message: str, tasks: list[str]) -> str:
+        tasks_text = '\n'.join(f'{i+1}. {t}' for i, t in enumerate(tasks))
+        print(f'{Fore.CYAN}[Deep] Reasoning through plan...{Style.RESET_ALL}')
+        resp = await self.adapter.complete(
+            model=self.cfg.model,
+            messages=[
+                {'role': 'system', 'content': self.cfg.reasoning_prompt},
+                {'role': 'user', 'content': f'Request: {user_message}\n\nPlanned tasks:\n{tasks_text}'},
+            ]
+        )
+        self.session_input_tokens += resp.input_tokens
+        self.session_output_tokens += resp.output_tokens
+        reasoning = resp.content.strip()
+        dim = '\033[2m'
+        print(f'{dim}{reasoning}\033[0m')
+        return reasoning
+
     async def _run_deep(self, user_message: str) -> str:
         from agent.planner import PlannerAgent
         from agent.evaluator import EvaluatorAgent
@@ -158,7 +175,11 @@ class MainAgent(Agent):
         for i, t in enumerate(tasks):
             print(f'  {i+1}. {t}')
 
-        results = await self._run_executors(tasks, user_message)
+        reasoning = await self._reason_about_plan(user_message, tasks)
+        context = f'{user_message}\n\n[Reasoning]\n{reasoning}'
+
+        print(f'{Fore.CYAN}[Deep] Starting executors...{Style.RESET_ALL}')
+        results = await self._run_executors(tasks, context)
 
         for round_num in range(3):
             print(f'{Fore.CYAN}[Deep] Evaluating (round {round_num + 1})...{Style.RESET_ALL}')
@@ -169,7 +190,7 @@ class MainAgent(Agent):
             if not evaluation.issues:
                 break
             print(f'{Fore.YELLOW}[Deep] {len(evaluation.issues)} issue(s), spawning fix executors...{Style.RESET_ALL}')
-            results.extend(await self._run_executors(evaluation.issues, user_message))
+            results.extend(await self._run_executors(evaluation.issues, context))
 
         return await self._synthesize(user_message, results)
 

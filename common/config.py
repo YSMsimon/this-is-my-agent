@@ -46,6 +46,7 @@ class config:
         self.planner_prompt = _load_prompt("planner.md")
         self.executor_prompt = _load_prompt("executor.md")
         self.evaluator_prompt = _load_prompt("evaluator.md")
+        self.reasoning_prompt = _load_prompt("reasoning.md")
         self._validate()
 
     def _validate(self):

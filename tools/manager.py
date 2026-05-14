@@ -121,8 +121,15 @@ async def glob(pattern: str, path: str = '.') -> str:
 
 
 async def ask_user(question: str) -> str:
-    await aprint(f'{question}')
-    return await ainput("User> ")
+    from colorama import Fore, Style
+    border = '─' * 50
+    await aprint(f'\n{Fore.CYAN}┌{border}┐')
+    await aprint(f'│ Question{Style.RESET_ALL}')
+    await aprint(f'{Fore.CYAN}│{Style.RESET_ALL}  {question}')
+    await aprint(f'{Fore.CYAN}│{Style.RESET_ALL}  {Fore.WHITE}(press Enter to skip){Style.RESET_ALL}')
+    await aprint(f'{Fore.CYAN}└{border}┘{Style.RESET_ALL}')
+    answer = await ainput(f'{Fore.CYAN}Answer>{Style.RESET_ALL} ')
+    return answer.strip() if answer.strip() else '[skipped]'
 
 
 async def run_sub_agent(prompt: str) -> str:
