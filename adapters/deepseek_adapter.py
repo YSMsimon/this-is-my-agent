@@ -1,6 +1,10 @@
-from openai import AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI, RateLimitError, BadRequestError, APIStatusError
 from common.config import config
 from adapters.schema import Response
+
+
+def _is_context_exceeded(e: BadRequestError) -> bool:
+    return 'maximum context length' in str(e).lower()
 
 
 class DeepSeekAdapter:
@@ -18,6 +22,14 @@ class DeepSeekAdapter:
             return await self._complete(messages, model, tools, **kwargs)
         except RateLimitError as e:
             raise RuntimeError(f"DeepSeek rate limit reached: {e}") from e
+        except BadRequestError as e:
+            if _is_context_exceeded(e):
+                raise RuntimeError("context_window_exceeded") from e
+            raise
+        except APIStatusError as e:
+            if e.status_code == 413:
+                raise RuntimeError("context_window_exceeded") from e
+            raise
 
     async def _complete(self, messages, model, tools=None, **kwargs) -> Response:
         raw = await self.client.chat.completions.create(

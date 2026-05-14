@@ -12,6 +12,16 @@ from agent.base import Agent
 from agent.profile import ProfileManager
 
 
+def _strip_orphaned_tool_messages(messages: List[Dict]) -> List[Dict]:
+    valid_ids = {
+        tc['id']
+        for m in messages
+        if m.get('role') == 'assistant'
+        for tc in (m.get('tool_calls') or [])
+    }
+    return [m for m in messages if m.get('role') != 'tool' or m.get('tool_call_id') in valid_ids]
+
+
 class MainAgent(Agent):
     KNOWLEDGE_TOOLS = {'fetch_text', 'read_file'}
 
@@ -77,7 +87,7 @@ class MainAgent(Agent):
         history, _ = history
         knowledge = await self.db.search_knowledge(embedding, top_k=5, user_id=self.user_id)
 
-        messages = list(history)
+        messages = _strip_orphaned_tool_messages(list(history))
 
         if knowledge:
             rag_lines = "\n\n".join(

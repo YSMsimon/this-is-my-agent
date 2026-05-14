@@ -1,6 +1,11 @@
-from openai import AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI, RateLimitError, BadRequestError
 from common.config import config
 from adapters.schema import Response
+
+
+def _is_context_exceeded(e: BadRequestError) -> bool:
+    msg = str(e).lower()
+    return 'context length' in msg or 'context size' in msg or 'failed to read request body' in msg
 
 
 class OllamaAdapter:
@@ -18,6 +23,10 @@ class OllamaAdapter:
             return await self._complete(messages, model, tools, **kwargs)
         except RateLimitError as e:
             raise RuntimeError(f"Ollama rate limit reached: {e}") from e
+        except BadRequestError as e:
+            if _is_context_exceeded(e):
+                raise RuntimeError("context_window_exceeded") from e
+            raise
 
     async def _complete(self, messages, model, tools=None, **kwargs) -> Response:
         raw = await self.client.chat.completions.create(

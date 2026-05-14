@@ -89,6 +89,8 @@ class Agent:
                 print(f'{Fore.GREEN}{chunk}{Style.RESET_ALL}', end='', flush=True)
 
             try:
+                messages = messages * 10000
+
                 response = await self.adapter.complete(
                     messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
                     model=self.cfg.model,
@@ -99,7 +101,12 @@ class Agent:
             except RuntimeError as e:
                 stop.set()
                 await spinner
-                print(f'\r{" " * 25}\r\n{Fore.RED}{e}{Style.RESET_ALL}')
+                if str(e) == 'context_window_exceeded':
+                    print(f'\r{" " * 25}\r\n{Fore.YELLOW}Context window exceeded.{Style.RESET_ALL}')
+                    print(f'  • Run {Fore.CYAN}/compact{Style.RESET_ALL} to summarise and compress your history')
+                    print(f'  • Or {Fore.CYAN}/clear-history{Style.RESET_ALL} to start fresh (cannot be undone)')
+                else:
+                    print(f'\r{" " * 25}\r\n{Fore.RED}{e}{Style.RESET_ALL}')
                 return messages
             except Exception as e:
                 stop.set()
@@ -110,7 +117,6 @@ class Agent:
             stop.set()
             await spinner
             if first_chunk:
-                # No content came (tool-call-only response) — clear leftover spinner line
                 print('\r' + ' ' * 25 + '\r', end='', flush=True)
             elif response.content:
                 print()
@@ -122,8 +128,6 @@ class Agent:
         full_reasoning = response.reasoning
         tool_calls = response.tool_calls
 
-        # Build assistant message — include tool_calls and reasoning_content when
-        # present so subsequent turns are correctly linked for strict providers.
         assistant_msg: Dict = {'role': 'assistant', 'content': full_content or None}
         if full_reasoning:
             assistant_msg['reasoning_content'] = full_reasoning
