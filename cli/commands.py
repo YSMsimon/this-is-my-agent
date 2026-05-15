@@ -159,7 +159,7 @@ class CommandManager:
             raw = text.strip()[len('/apikey'):].strip()
             parts = raw.split(None, 1)
             if len(parts) != 2:
-                print("Usage: /apikey <provider> <key>  (providers: deepseek, ollama)")
+                print("Usage: /apikey <provider> <key>  (providers: deepseek, ollama, external)")
                 return True
             provider, key = parts[0].lower(), parts[1].strip()
             if provider == 'deepseek':
@@ -172,8 +172,13 @@ class CommandManager:
                 self.cfg.ollama_api_key = key
                 self.agent.adapter._providers.pop('ollama', None)
                 print("Ollama API key updated in .env.")
+            elif provider == 'external':
+                write_env_key('EXTERNAL_API_KEY', key)
+                self.cfg.external_api_key = key
+                self.agent.adapter._providers.pop('external', None)
+                print("External API key updated in .env.")
             else:
-                print(f"Unknown provider '{provider}'. Supported: deepseek, ollama")
+                print(f"Unknown provider '{provider}'. Supported: deepseek, ollama, external")
             return True
 
         print(f"Unknown command: {text.strip()}. Type /help to see available commands.")

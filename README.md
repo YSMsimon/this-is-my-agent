@@ -28,14 +28,16 @@ All agents inherit from a shared `Agent` base class that handles the streaming L
 
 ```
 adapters/
-├── __init__.py          # Adapter: unified entry point, routes by provider prefix
-├── schema.py            # Response: canonical output format for all providers
-├── base_adapter.py      # Abstract interface all adapters implement
-├── deepseek_adapter.py  # DeepSeek (OpenAI-compatible client)
-├── ollama_adapter.py    # Ollama (OpenAI-compatible client + embed support)
-├── anthropic_adapter.py # Anthropic
-└── gemini_adapter.py    # Google Gemini
+├── __init__.py               # Adapter: unified entry point, routes by provider prefix
+├── schema.py                 # Response: canonical output format for all providers
+├── base_adapter.py           # Abstract interface all adapters implement
+├── openai_compat_adapter.py  # All OpenAI-compatible providers (DeepSeek, OpenAI, OpenRouter, etc.)
+├── ollama_adapter.py         # Ollama (OpenAI-compatible client + embed support)
+├── anthropic_adapter.py      # Anthropic
+└── gemini_adapter.py         # Google Gemini
 ```
+
+DeepSeek, OpenAI, and any external provider (OpenRouter, Together AI, Baidu AI, etc.) all share one adapter — `OpenAICompatAdapter` — since they all speak the OpenAI API. The router in `__init__.py` just passes the right `api_key` and `base_url` per provider. Only Ollama (embedding support), Anthropic, and Gemini need their own adapter.
 
 Model strings use a `provider/model` format. The `Adapter` class reads the prefix, routes to the right provider adapter, and strips the prefix before the API call. All adapters return the same `Response` object:
 
@@ -122,10 +124,10 @@ Deep mode adds a **reasoning step** between planning and execution. After the pl
 │   ├── __init__.py          # Adapter: unified router by provider prefix
 │   ├── schema.py            # Response dataclass (canonical output format)
 │   ├── base_adapter.py      # Abstract base adapter interface
-│   ├── deepseek_adapter.py  # DeepSeek provider adapter
-│   ├── ollama_adapter.py    # Ollama provider adapter (+ embeddings)
-│   ├── anthropic_adapter.py # Anthropic provider adapter
-│   └── gemini_adapter.py    # Gemini provider adapter
+│   ├── openai_compat_adapter.py  # DeepSeek, OpenAI, OpenRouter, etc. (shared OpenAI client)
+│   ├── ollama_adapter.py         # Ollama provider adapter (+ embeddings)
+│   ├── anthropic_adapter.py      # Anthropic provider adapter
+│   └── gemini_adapter.py         # Gemini provider adapter
 │
 ├── agent/
 │   ├── base.py              # Base Agent: streaming loop, tool dispatch, hooks
@@ -195,6 +197,7 @@ Deep mode adds a **reasoning step** between planning and execution. After the pl
 | `/model <role> <provider/model>` | Change a sub-model: `compact`, `planner`, `evaluator`, `profile` |
 | `/apikey deepseek <key>` | Update DeepSeek API key — writes directly to `.env` |
 | `/apikey ollama <key>` | Update Ollama API key — writes directly to `.env` |
+| `/apikey external <key>` | Update external provider API key — writes directly to `.env` |
 
 **Model preferences** (`/model`) are saved to the database and restored automatically on the next launch. Sub-models (`compact`, `planner`, `evaluator`, `profile`) default to `MODEL` if not set — database values override `.env`.
 
@@ -253,7 +256,10 @@ DATABASE_URL=postgresql://myuser:mypassword@localhost:5433/agent_memory
 
 # ── API keys (fill in the provider(s) you use) ───────────────────────────────
 DEEPSEEK_API_KEY=...
-# OPENAI_API_KEY=sk-...
+
+# ── External provider (OpenRouter, Together AI, Baidu AI, etc.) ───────────────
+# EXTERNAL_BASE_URL=https://openrouter.ai/api/v1
+# EXTERNAL_API_KEY=sk-...
 
 # ── Ollama (only if not on default localhost:11434) ───────────────────────────
 # OLLAMA_BASE_URL=http://localhost:11434/v1
@@ -276,6 +282,7 @@ Model strings follow a `provider/model` format. The adapter layer reads the pref
 | Ollama | `ollama/model` | `ollama/llama3.2` |
 | DeepSeek | `deepseek/model` | `deepseek/deepseek-chat` |
 | OpenAI | `openai/model` | `openai/gpt-4o` |
+| External | `external/model` | `external/meta-llama/llama-3.1-70b-instruct` |
 
 ---
 
@@ -294,6 +301,8 @@ Model strings follow a `provider/model` format. The adapter layer reads the pref
 | `OPENAI_API_KEY` | OpenAI API key |
 | `OLLAMA_BASE_URL` | Custom Ollama URL (default: `http://localhost:11434/v1`) |
 | `OLLAMA_API_KEY` | Ollama API key (default: `dummy`) |
+| `EXTERNAL_BASE_URL` | Base URL for any OpenAI-compatible provider (e.g. OpenRouter, Together AI) |
+| `EXTERNAL_API_KEY` | API key for the external provider |
 
 ---
 

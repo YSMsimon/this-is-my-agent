@@ -1,18 +1,20 @@
 from openai import AsyncOpenAI, RateLimitError, BadRequestError, NotFoundError, APIStatusError
-from common.config import config
 from adapters.schema import Response
 
 
 def _is_context_exceeded(e: BadRequestError) -> bool:
-    return 'maximum context length' in str(e).lower()
+    msg = str(e).lower()
+    return 'maximum context length' in msg or 'context length' in msg or 'context size' in msg
 
 
-class DeepSeekAdapter:
-    def __init__(self, cfg: config):
-        self.client = AsyncOpenAI(
-            api_key=cfg.deepseek_api_key,
-            base_url="https://api.deepseek.com"
-        )
+class OpenAICompatAdapter:
+    """Single adapter for all OpenAI-compatible providers (DeepSeek, OpenAI, OpenRouter, etc.).
+    Pass the provider's base_url and api_key; the model name is forwarded as-is.
+    """
+
+    def __init__(self, api_key: str, base_url: str | None = None, provider: str = 'openai'):
+        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._provider = provider
 
     async def complete(self, messages: list[dict], model: str, tools: list[dict] | None = None,
                        stream: bool = False, on_chunk=None, **kwargs) -> Response:
@@ -21,7 +23,7 @@ class DeepSeekAdapter:
                 return await self._stream(messages, model, tools, on_chunk, **kwargs)
             return await self._complete(messages, model, tools, **kwargs)
         except RateLimitError as e:
-            raise RuntimeError(f"DeepSeek rate limit reached: {e}") from e
+            raise RuntimeError(f"{self._provider} rate limit reached: {e}") from e
         except NotFoundError as e:
             raise RuntimeError(f"Model not found: {model}") from e
         except BadRequestError as e:
@@ -69,6 +71,8 @@ class DeepSeekAdapter:
             if chunk.usage:
                 input_tokens = chunk.usage.prompt_tokens
                 output_tokens = chunk.usage.completion_tokens
+                continue
+            if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
             finish_reason = chunk.choices[0].finish_reason or finish_reason

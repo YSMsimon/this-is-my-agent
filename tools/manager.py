@@ -241,7 +241,8 @@ tools = [{
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "The search query"},
-                "max_results": {"type": "integer", "description": "Maximum number of results to return (default 5)"}
+                "max_results": {"type": "integer", "description": "Maximum number of results to return (default 10)"},
+                "page": {"type": "integer", "description": "Page of results to fetch (default 1). Use page 2+ if page 1 results were not relevant enough."}
             },
             "required": ["query"]
         }

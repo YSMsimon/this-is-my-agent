@@ -9,9 +9,8 @@ from tools.crawl import web_search
 
 async def main():
     query = "Current time in toronto"
-    print(f"Query: {query}\n")
 
-    results = await web_search(query, max_results=3)
+    results = await web_search(query, max_results= 10, page=2)
     print(results)
 
 

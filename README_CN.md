@@ -28,14 +28,16 @@
 
 ```
 adapters/
-├── __init__.py          # Adapter：统一入口，按提供商前缀路由
-├── schema.py            # Response：所有提供商的统一输出格式
-├── base_adapter.py      # 所有适配器须实现的抽象接口
-├── deepseek_adapter.py  # DeepSeek 适配器（兼容 OpenAI 客户端）
-├── ollama_adapter.py    # Ollama 适配器（兼容 OpenAI 客户端 + 支持嵌入）
-├── anthropic_adapter.py # Anthropic 适配器
-└── gemini_adapter.py    # Google Gemini 适配器
+├── __init__.py               # Adapter：统一入口，按提供商前缀路由
+├── schema.py                 # Response：所有提供商的统一输出格式
+├── base_adapter.py           # 所有适配器须实现的抽象接口
+├── openai_compat_adapter.py  # 所有兼容 OpenAI 的提供商（DeepSeek、OpenAI、OpenRouter 等）
+├── ollama_adapter.py         # Ollama 适配器（兼容 OpenAI 客户端 + 支持嵌入）
+├── anthropic_adapter.py      # Anthropic 适配器
+└── gemini_adapter.py         # Google Gemini 适配器
 ```
+
+DeepSeek、OpenAI 以及任意外部提供商（OpenRouter、Together AI、百度 AI 等）均共用同一个适配器 —— `OpenAICompatAdapter` —— 因为它们都遵循 OpenAI API 协议。路由器（`__init__.py`）只需根据提供商传入对应的 `api_key` 和 `base_url` 即可。只有 Ollama（嵌入支持）、Anthropic 和 Gemini 需要独立适配器。
 
 模型字符串采用 `提供商/模型名` 格式。`Adapter` 类读取前缀、路由到对应的提供商适配器，并在调用 API 前自动去除前缀。所有适配器均返回统一的 `Response` 对象：
 
@@ -122,10 +124,10 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 │   ├── __init__.py          # Adapter：按提供商前缀统一路由
 │   ├── schema.py            # Response 数据类（统一输出格式）
 │   ├── base_adapter.py      # 抽象适配器接口
-│   ├── deepseek_adapter.py  # DeepSeek 适配器
-│   ├── ollama_adapter.py    # Ollama 适配器（含嵌入支持）
-│   ├── anthropic_adapter.py # Anthropic 适配器
-│   └── gemini_adapter.py    # Gemini 适配器
+│   ├── openai_compat_adapter.py  # DeepSeek、OpenAI、OpenRouter 等（共用 OpenAI 客户端）
+│   ├── ollama_adapter.py         # Ollama 适配器（含嵌入支持）
+│   ├── anthropic_adapter.py      # Anthropic 适配器
+│   └── gemini_adapter.py         # Gemini 适配器
 │
 ├── agent/
 │   ├── base.py              # 基类 Agent：流式循环、工具调度、钩子函数
@@ -195,6 +197,7 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 | `/model <角色> <提供商/模型名>` | 更改子模型：`compact`、`planner`、`evaluator`、`profile` |
 | `/apikey deepseek <密钥>` | 更新 DeepSeek API 密钥 — 直接写入 `.env` 文件 |
 | `/apikey ollama <密钥>` | 更新 Ollama API 密钥 — 直接写入 `.env` 文件 |
+| `/apikey external <密钥>` | 更新外部提供商 API 密钥 — 直接写入 `.env` 文件 |
 
 **模型偏好**（`/model`）保存至数据库，下次启动时自动恢复。子模型（`compact`、`planner`、`evaluator`、`profile`）若未单独设置则默认使用主 `MODEL`，数据库中的值优先于 `.env`。
 
@@ -253,7 +256,10 @@ DATABASE_URL=postgresql://myuser:mypassword@localhost:5433/agent_memory
 
 # ── API 密钥（填写你使用的提供商）──────────────────────────────────────────────
 DEEPSEEK_API_KEY=...
-# OPENAI_API_KEY=sk-...
+
+# ── 外部提供商（OpenRouter、Together AI、百度 AI 等）──────────────────────────
+# EXTERNAL_BASE_URL=https://openrouter.ai/api/v1
+# EXTERNAL_API_KEY=sk-...
 
 # ── Ollama（仅在非默认地址时需要）────────────────────────────────────────────
 # OLLAMA_BASE_URL=http://localhost:11434/v1
@@ -276,6 +282,7 @@ python3 main.py
 | Ollama | `ollama/模型名` | `ollama/llama3.2` |
 | DeepSeek | `deepseek/模型名` | `deepseek/deepseek-chat` |
 | OpenAI | `openai/模型名` | `openai/gpt-4o` |
+| 外部提供商 | `external/模型名` | `external/meta-llama/llama-3.1-70b-instruct` |
 
 ---
 
@@ -294,6 +301,8 @@ python3 main.py
 | `OPENAI_API_KEY` | OpenAI API 密钥 |
 | `OLLAMA_BASE_URL` | 自定义 Ollama 地址（默认：`http://localhost:11434/v1`） |
 | `OLLAMA_API_KEY` | Ollama API 密钥（默认：`dummy`） |
+| `EXTERNAL_BASE_URL` | 外部兼容 OpenAI 提供商的接口地址（如 OpenRouter、Together AI） |
+| `EXTERNAL_API_KEY` | 外部提供商的 API 密钥 |
 
 ---
 

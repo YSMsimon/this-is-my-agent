@@ -1,7 +1,9 @@
+from adapters.openai_compat_adapter import OpenAICompatAdapter
 from adapters.ollama_adapter import OllamaAdapter
-from adapters.deepseek_adapter import DeepSeekAdapter
 from adapters.schema import Response
 from common.config import config
+
+_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 
 class Adapter:
@@ -18,7 +20,22 @@ class Adapter:
                 case 'ollama':
                     self._providers[provider] = OllamaAdapter(self._cfg)
                 case 'deepseek':
-                    self._providers[provider] = DeepSeekAdapter(self._cfg)
+                    self._providers[provider] = OpenAICompatAdapter(
+                        api_key=self._cfg.deepseek_api_key,
+                        base_url=_DEEPSEEK_BASE_URL,
+                        provider='deepseek',
+                    )
+                case 'openai':
+                    self._providers[provider] = OpenAICompatAdapter(
+                        api_key=self._cfg.openai_api_key,
+                        provider='openai',
+                    )
+                case 'external':
+                    self._providers[provider] = OpenAICompatAdapter(
+                        api_key=self._cfg.external_api_key,
+                        base_url=self._cfg.external_base_url,
+                        provider='external',
+                    )
                 case _:
                     raise ValueError(f"Unsupported provider: {provider}")
         return self._providers[provider], model_name
