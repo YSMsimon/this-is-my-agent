@@ -30,11 +30,13 @@ def _fetch_text_sync(url: str) -> str:
         resp.raise_for_status()
     except Exception as e:
         return f"Error fetching {url}: {e}"
-    print(resp.headers)
     if "application/pdf" in resp.headers.get("Content-Type", ""):
         try:
             doc = fitz.open(stream=resp.content, filetype="pdf")
-            return "\n\n".join(page.get_text() for page in doc)
+            text = "\n\n".join(page.get_text() for page in doc).strip()
+            if not text:
+                return "This PDF appears to be scanned or image-based, and text extraction failed."
+            return text
         except Exception as e:
             return f"Error reading PDF: {e}"
 

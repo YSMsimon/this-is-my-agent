@@ -4,6 +4,13 @@
 
 A fully async, multi-agent CLI assistant with a **custom adapter layer** for LLM providers — swap between local Ollama models, OpenAI, DeepSeek, and more by changing one line in `.env`.
 
+## Demo
+
+### Simple Mode
+https://github.com/user-attachments/assets/cc1a5129-6ef1-464a-8006-0c5a77f2368b
+
+---
+
 ---
 
 ## Agent Architecture
