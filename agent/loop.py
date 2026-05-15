@@ -23,8 +23,6 @@ def _strip_orphaned_tool_messages(messages: List[Dict]) -> List[Dict]:
 
 
 class MainAgent(Agent):
-    KNOWLEDGE_TOOLS = {'fetch_text', 'read_file'}
-
     def __init__(self, cfg: config, tools: Optional[List] = None,
                  db: DB = None, user_id: str = 'default_user'):
         super().__init__(cfg, tools if tools is not None else simple_tools)
@@ -48,22 +46,11 @@ class MainAgent(Agent):
             return self.todo_manager.to_do(**args)
         return await tool_handler[name](**args)
 
-    async def _store_knowledge(self, args: dict, result: str):
-        source_ref = args.get('url') or args.get('file_path') or ''
-        source_type = 'webpage' if 'url' in args else 'file'
-        for i, chunk in enumerate(self._chunk(result)):
-            if not chunk.strip():
-                continue
-            embedding = await self.get_embedding(chunk)
-            if not embedding:
-                continue
-            await self.db.store_knowledge(self.user_id, source_type, source_ref, chunk, embedding, i)
-
     async def _save_turn(self, msg: Dict):
         role = msg.get('role')
         content = msg.get('content')
         tool_call_id = msg.get('tool_call_id')
-        await self.db.add_message(self.user_id, role, content, None, tool_call_id)
+        await self.db.add_message(self.user_id, role, content, tool_call_id)
 
         if role == 'user':
             self._last_user_message = content
@@ -98,21 +85,9 @@ class MainAgent(Agent):
             self.context_window = await self.db.get_context_window(self.user_id)
             self._context_window_loaded = True
 
-        limit = self.context_window if self.context_window is not None else 10000
-        history, embedding = await asyncio.gather(
-            self.db.get_recent_history(self.user_id, limit=limit),
-            self.get_embedding(user_message)
-        )
-        history, _ = history
-        knowledge = await self.db.search_knowledge(embedding, top_k=5, user_id=self.user_id)
-
+        limit = self.context_window if self.context_window is not None else None
+        history, _ = await self.db.get_recent_history(self.user_id, limit=limit)
         messages = _strip_orphaned_tool_messages(list(history))
-
-        if knowledge:
-            rag_lines = "\n\n".join(
-                f"[{k['source_type']} — {k['source_ref']}]\n{k['content']}" for k in knowledge
-            )
-            messages.insert(0, {'role': 'system', 'content': f"Relevant knowledge:\n{rag_lines}"})
 
         await self._save_turn({'role': 'user', 'content': user_message})
         messages.append({'role': 'user', 'content': user_message})

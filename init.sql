@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-
 CREATE TABLE IF NOT EXISTS llm_memory (
     id            SERIAL PRIMARY KEY,
     user_id       TEXT NOT NULL,
@@ -32,18 +30,3 @@ ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS compact_model   TEXT DEFAULT 
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS planner_model   TEXT DEFAULT NULL;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS evaluator_model TEXT DEFAULT NULL;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS profile_model   TEXT DEFAULT NULL;
-
-CREATE TABLE IF NOT EXISTS knowledge_base (
-    id          SERIAL PRIMARY KEY,
-    user_id     TEXT NOT NULL,
-    source_type TEXT NOT NULL,
-    source_ref  TEXT,
-    chunk_index INT DEFAULT 0,
-    content     TEXT NOT NULL,
-    embedding   vector(768),
-    created_at  TIMESTAMP DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_knowledge_embedding
-    ON knowledge_base USING hnsw (embedding vector_cosine_ops)
-    WHERE embedding IS NOT NULL;

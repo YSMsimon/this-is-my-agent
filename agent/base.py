@@ -25,7 +25,6 @@ async def _spin(stop: asyncio.Event):
 
 
 class Agent:
-    KNOWLEDGE_TOOLS: set = set()
     _silent: bool = False  # when True: no spinner, no streaming, no stdout (parallel background workers)
 
     def __init__(self, cfg: config, tools: Optional[List] = None):
@@ -36,23 +35,10 @@ class Agent:
         self.session_input_tokens = 0
         self.session_output_tokens = 0
 
-    def _chunk(self, text: str, size: int = 1500, overlap: int = 200) -> list:
-        chunks, start = [], 0
-        while start < len(text):
-            chunks.append(text[start:start + size])
-            start += size - overlap
-        return chunks
-
-    async def get_embedding(self, text: str) -> list:
-        return await self.adapter.embed(text, model=self.cfg.embedding_model)
-
     def _task_complete(self) -> bool:
         return True
 
     async def _save_turn(self, msg: Dict):
-        pass
-
-    async def _store_knowledge(self, args: dict, result: str):
         pass
 
     async def _call_tool(self, name: str, args: dict) -> str:
@@ -156,8 +142,6 @@ class Agent:
                 result = await self._call_tool(name, args)
             except Exception as e:
                 result = f"Tool error ({name}): {e}"
-            if name in self.KNOWLEDGE_TOOLS and isinstance(result, str) and result.strip():
-                await self._store_knowledge(args, result)
             await self._save_turn({
                 'role': 'tool',
                 'content': f"Name: {name}, Arguments: {args}, Result: {result}",

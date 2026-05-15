@@ -15,27 +15,14 @@ class DB:
         self._pool = await asyncpg.create_pool(dsn=os.getenv('DATABASE_URL'))
         return self
 
-    def _vec(self, embedding: list) -> str:
-        if not embedding:
-            raise ValueError("embedding must have at least 1 dimension")
-        return '[' + ','.join(map(str, embedding)) + ']'
-
     async def add_message(self, user_id: str, role: str, content: str,
-                          embedding: list = None, tool_call_id: str = None,
-                          in_context: bool = True):
+                          tool_call_id: str = None, in_context: bool = True):
         async with self._pool.acquire() as conn:
-            if embedding:
-                await conn.execute(
-                    """INSERT INTO llm_memory (user_id, role, content, embedding, tool_call_id, in_context)
-                       VALUES ($1, $2, $3, $4::vector, $5, $6)""",
-                    user_id, role, content, self._vec(embedding), tool_call_id, in_context
-                )
-            else:
-                await conn.execute(
-                    """INSERT INTO llm_memory (user_id, role, content, tool_call_id, in_context)
-                       VALUES ($1, $2, $3, $4, $5)""",
-                    user_id, role, content, tool_call_id, in_context
-                )
+            await conn.execute(
+                """INSERT INTO llm_memory (user_id, role, content, tool_call_id, in_context)
+                   VALUES ($1, $2, $3, $4, $5)""",
+                user_id, role, content, tool_call_id, in_context
+            )
 
     async def get_recent_history(self, user_id: str, limit: int = 20) -> tuple:
         async with self._pool.acquire() as conn:
@@ -84,35 +71,6 @@ class DB:
                 "DELETE FROM llm_memory WHERE user_id = $1",
                 user_id
             )
-
-    async def store_knowledge(self, user_id: str, source_type: str, source_ref: str,
-                              content: str, embedding: list, chunk_index: int = 0):
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                """INSERT INTO knowledge_base (user_id, source_type, source_ref, chunk_index, content, embedding)
-                   VALUES ($1, $2, $3, $4, $5, $6::vector)""",
-                user_id, source_type, source_ref, chunk_index, content, self._vec(embedding)
-            )
-
-    async def search_knowledge(self, embedding: list, top_k: int = 5, user_id: str = None) -> list:
-        vec = self._vec(embedding)
-        async with self._pool.acquire() as conn:
-            if user_id:
-                rows = await conn.fetch(
-                    """SELECT source_type, source_ref, content FROM knowledge_base
-                       WHERE user_id = $1 AND embedding IS NOT NULL
-                       ORDER BY embedding <=> $2::vector LIMIT $3""",
-                    user_id, vec, top_k
-                )
-            else:
-                rows = await conn.fetch(
-                    """SELECT source_type, source_ref, content FROM knowledge_base
-                       WHERE embedding IS NOT NULL
-                       ORDER BY embedding <=> $1::vector LIMIT $2""",
-                    vec, top_k
-                )
-        return [{'source_type': r['source_type'], 'source_ref': r['source_ref'], 'content': r['content']}
-                for r in rows]
 
     async def get_all_history(self, user_id: str) -> list:
         async with self._pool.acquire() as conn:

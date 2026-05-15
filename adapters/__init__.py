@@ -45,6 +45,3 @@ class Adapter:
         provider, model_name = self._get(model)
         return await provider.complete(messages, model_name, tools, stream, on_chunk, **kwargs)
 
-    async def embed(self, text: str, model: str) -> list[float]:
-        provider, model_name = self._get(model)
-        return await provider.embed(text, model_name)

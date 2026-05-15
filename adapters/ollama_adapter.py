@@ -95,7 +95,3 @@ class OllamaAdapter:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )
-
-    async def embed(self, text: str, model: str) -> list[float]:
-        response = await self.client.embeddings.create(model=model, input=text)
-        return response.data[0].embedding

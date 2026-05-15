@@ -102,7 +102,6 @@ async def _print_banner(cfg: config, db: DB, user_id: str):
     print(mrow('PLANNER_MODEL',   cfg.planner_model))
     print(mrow('EVALUATOR_MODEL', cfg.evaluator_model))
     print(mrow('PROFILE_MODEL',   cfg.profile_model))
-    print(mrow('EMBED_MODEL',     cfg.embedding_model))
     print()
 
 
