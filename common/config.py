@@ -31,13 +31,9 @@ class config:
     def __init__(self):
         load_dotenv(dotenv_path=_PROJECT_ROOT / ".env")
         self.model = os.getenv('MODEL')
-        self.deepseek_api_key = os.getenv('DEEPSEEK_API_KEY')
-        self.openai_api_key = os.getenv('OPENAI_API_KEY')
-        self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
-        self.ollama_api_key = os.getenv('OLLAMA_API_KEY', "dummy")
-        self.external_api_key = os.getenv('EXTERNAL_API_KEY', "dummy")
-        self.external_base_url = os.getenv('EXTERNAL_BASE_URL', 'https://openrouter.ai/api/v1')
         self.profile_model = os.getenv('PROFILE_MODEL') or self.model
+        _cw = os.getenv('CONTEXT_WINDOW')
+        self.context_window: int | None = int(_cw) if _cw and _cw.isdigit() else None
         self.compact_model = os.getenv('COMPACT_MODEL') or self.model
         self.evaluator_model = os.getenv('EVALUATOR_MODEL') or self.model
         self.planner_model = os.getenv('PLANNER_MODEL') or self.model
@@ -57,7 +53,7 @@ class config:
         if not self.model:
             missing.append('MODEL')
         provider = self.model.split('/')[0] if self.model else None
-        if provider == 'deepseek' and not self.deepseek_api_key:
+        if provider == 'deepseek' and not os.getenv('DEEPSEEK_API_KEY'):
             missing.append('DEEPSEEK_API_KEY')
         if provider == 'external' and not os.getenv('EXTERNAL_API_KEY'):
             missing.append('EXTERNAL_API_KEY')

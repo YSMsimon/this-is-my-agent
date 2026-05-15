@@ -18,10 +18,19 @@ COMMANDS = {
     '/model':                       'Show all current model settings',
     '/model <model>':               'Change main model (e.g. /model deepseek/deepseek-chat)',
     '/model <role> <model>':        'Change a sub-model role: compact, planner, evaluator, profile',
+    '/model all <model>':           'Set all models (main + all sub-models) to the same model',
     '/apikey <provider> <key>':     'Change API key for a provider: deepseek, ollama',
 }
 
 _SUB_MODELS = {'compact', 'planner', 'evaluator', 'profile'}
+
+_MODEL_ENV_KEYS = {
+    'model':           'MODEL',
+    'compact_model':   'COMPACT_MODEL',
+    'planner_model':   'PLANNER_MODEL',
+    'evaluator_model': 'EVALUATOR_MODEL',
+    'profile_model':   'PROFILE_MODEL',
+}
 
 
 class CommandManager:
@@ -96,14 +105,13 @@ class CommandManager:
         if text.strip().lower().startswith('/context-window'):
             raw = text.strip()[len('/context-window'):].strip()
             if not raw:
-                current = self.agent.context_window
+                current = self.cfg.context_window
                 print(f"context window: {current if current is not None else 'off (no limit)'}")
                 return True
             if raw.lower() == 'off':
-                await self.db.set_context_window(self.user_id, None)
-                self.agent.context_window = None
-                self.agent._context_window_loaded = True
-                print("context window disabled — full history will be loaded.")
+                write_env_key('CONTEXT_WINDOW', '')
+                self.cfg.context_window = None
+                print("context window disabled — written to .env")
                 return True
             try:
                 value = int(raw)
@@ -113,10 +121,9 @@ class CommandManager:
             if value <= 0:
                 print("context window must be a positive integer greater than 0.")
                 return True
-            await self.db.set_context_window(self.user_id, value)
-            self.agent.context_window = value
-            self.agent._context_window_loaded = True
-            print(f"context window set to {value} messages.")
+            write_env_key('CONTEXT_WINDOW', str(value))
+            self.cfg.context_window = value
+            print(f"context window set to {value} — written to .env")
             return True
 
         if text.strip().lower().startswith('/model'):
@@ -133,26 +140,34 @@ class CommandManager:
             parts = raw.split(None, 1)
             # normalise role: accept 'compact', 'compact_model', 'COMPACT_MODEL' etc.
             role_raw = parts[0].lower().removesuffix('_model')
-            if len(parts) == 2 and role_raw in _SUB_MODELS:
+            if len(parts) == 2 and role_raw == 'all':
                 model_str = parts[1]
                 if '/' not in model_str:
                     print(f"Model must be in 'provider/model' format, e.g. deepseek/deepseek-chat")
                     return True
-                db_key = f"{role_raw}_model"
-                await self.db.set_user_setting(self.user_id, db_key, model_str)
-                setattr(self.cfg, db_key, model_str)
-                print(f"{role_raw} model set to {model_str}")
+                for cfg_key, env_key in _MODEL_ENV_KEYS.items():
+                    write_env_key(env_key, model_str)
+                    setattr(self.cfg, cfg_key, model_str)
+                print(f"All models set to {model_str} — written to .env")
+            elif len(parts) == 2 and role_raw in _SUB_MODELS:
+                model_str = parts[1]
+                if '/' not in model_str:
+                    print(f"Model must be in 'provider/model' format, e.g. deepseek/deepseek-chat")
+                    return True
+                cfg_key = f"{role_raw}_model"
+                write_env_key(_MODEL_ENV_KEYS[cfg_key], model_str)
+                setattr(self.cfg, cfg_key, model_str)
+                print(f"{role_raw} model set to {model_str} — written to .env")
             elif len(parts) == 2 and '/' not in parts[0]:
-                # two words but first isn't a known role
-                print(f"Unknown role '{parts[0]}'. Use: compact, planner, evaluator, profile")
+                print(f"Unknown role '{parts[0]}'. Use: compact, planner, evaluator, profile, all")
             else:
                 model_str = parts[0]
                 if '/' not in model_str:
                     print(f"Model must be in 'provider/model' format, e.g. deepseek/deepseek-chat")
                     return True
-                await self.db.set_user_setting(self.user_id, 'model', model_str)
+                write_env_key('MODEL', model_str)
                 self.cfg.model = model_str
-                print(f"Model set to {model_str}")
+                print(f"Model set to {model_str} — written to .env")
             return True
 
         if text.strip().lower().startswith('/apikey'):
@@ -164,17 +179,14 @@ class CommandManager:
             provider, key = parts[0].lower(), parts[1].strip()
             if provider == 'deepseek':
                 write_env_key('DEEPSEEK_API_KEY', key)
-                self.cfg.deepseek_api_key = key
                 self.agent.adapter._providers.pop('deepseek', None)
                 print("DeepSeek API key updated in .env.")
             elif provider == 'ollama':
                 write_env_key('OLLAMA_API_KEY', key)
-                self.cfg.ollama_api_key = key
                 self.agent.adapter._providers.pop('ollama', None)
                 print("Ollama API key updated in .env.")
             elif provider == 'external':
                 write_env_key('EXTERNAL_API_KEY', key)
-                self.cfg.external_api_key = key
                 self.agent.adapter._providers.pop('external', None)
                 print("External API key updated in .env.")
             else:

@@ -1,5 +1,4 @@
 from openai import AsyncOpenAI, RateLimitError, BadRequestError, NotFoundError
-from common.config import config
 from adapters.schema import Response
 
 
@@ -9,11 +8,8 @@ def _is_context_exceeded(e: BadRequestError) -> bool:
 
 
 class OllamaAdapter:
-    def __init__(self, cfg: config):
-        self.client = AsyncOpenAI(
-            api_key=cfg.ollama_api_key,
-            base_url=cfg.ollama_base_url
-        )
+    def __init__(self, api_key: str = 'dummy', base_url: str = 'http://localhost:11434/v1'):
+        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     async def complete(self, messages: list[dict], model: str, tools: list[dict] | None = None,
                        stream: bool = False, on_chunk=None, **kwargs) -> Response:

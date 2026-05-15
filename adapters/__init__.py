@@ -1,3 +1,4 @@
+import os
 from adapters.openai_compat_adapter import OpenAICompatAdapter
 from adapters.ollama_adapter import OllamaAdapter
 from adapters.schema import Response
@@ -18,22 +19,25 @@ class Adapter:
         if provider not in self._providers:
             match provider:
                 case 'ollama':
-                    self._providers[provider] = OllamaAdapter(self._cfg)
+                    self._providers[provider] = OllamaAdapter(
+                        api_key=os.getenv('OLLAMA_API_KEY', 'dummy'),
+                        base_url=os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1'),
+                    )
                 case 'deepseek':
                     self._providers[provider] = OpenAICompatAdapter(
-                        api_key=self._cfg.deepseek_api_key,
+                        api_key=os.getenv('DEEPSEEK_API_KEY', ''),
                         base_url=_DEEPSEEK_BASE_URL,
                         provider='deepseek',
                     )
                 case 'openai':
                     self._providers[provider] = OpenAICompatAdapter(
-                        api_key=self._cfg.openai_api_key,
+                        api_key=os.getenv('OPENAI_API_KEY', ''),
                         provider='openai',
                     )
                 case 'external':
                     self._providers[provider] = OpenAICompatAdapter(
-                        api_key=self._cfg.external_api_key,
-                        base_url=self._cfg.external_base_url,
+                        api_key=os.getenv('EXTERNAL_API_KEY', ''),
+                        base_url=os.getenv('EXTERNAL_BASE_URL', 'https://openrouter.ai/api/v1'),
                         provider='external',
                     )
                 case _:
