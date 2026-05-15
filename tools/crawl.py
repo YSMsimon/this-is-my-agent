@@ -30,7 +30,7 @@ def _fetch_text_sync(url: str) -> str:
         resp.raise_for_status()
     except Exception as e:
         return f"Error fetching {url}: {e}"
-
+    print(resp.headers)
     if "application/pdf" in resp.headers.get("Content-Type", ""):
         try:
             doc = fitz.open(stream=resp.content, filetype="pdf")
