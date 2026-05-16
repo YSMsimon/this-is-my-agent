@@ -175,8 +175,9 @@ class MainAgent(Agent):
         answer = resp.content.strip()
         await self.db.add_message(self.user_id, 'user', user_message)
         await self.db.add_message(self.user_id, 'assistant', answer)
-        print()
-        Console(highlight=False).print(Markdown(answer))
+        if not self._silent:
+            print()
+            Console(highlight=False).print(Markdown(answer))
         turn_in = self.session_input_tokens - tokens_before[0]
         turn_out = self.session_output_tokens - tokens_before[1]
         if turn_in or turn_out:

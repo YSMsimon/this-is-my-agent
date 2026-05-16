@@ -33,17 +33,18 @@ _MODEL_ENV_KEYS = {
 }
 
 
-async def _input(prompt: str = '') -> str:
+async def _stdin_confirm(prompt: str) -> str:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, input, prompt)
 
 
 class CommandManager:
-    def __init__(self, db, user_id: str, cfg: config, agent):
+    def __init__(self, db, user_id: str, cfg: config, agent, confirm_fn=None):
         self.db = db
         self.user_id = user_id
         self.cfg = cfg
         self.agent = agent
+        self._confirm = confirm_fn or _stdin_confirm
 
     def is_command(self, text: str) -> bool:
         return text.strip().startswith('/')
@@ -64,7 +65,7 @@ class CommandManager:
             sys.exit(0)
 
         if cmd == '/delete-profile':
-            confirm = await _input("Delete your user profile? This cannot be undone. (Y/N): ")
+            confirm = await self._confirm("Delete your user profile? This cannot be undone. (Y/N): ")
             if confirm.strip().lower() == 'y':
                 await self.db.delete_user_profile(self.user_id)
                 print("Profile deleted.")
@@ -81,7 +82,7 @@ class CommandManager:
             return True
 
         if cmd == '/clear-history':
-            confirm = await _input("Delete all conversation history? This cannot be undone. (Y/N): ")
+            confirm = await self._confirm("Delete all conversation history? This cannot be undone. (Y/N): ")
             if confirm.strip().lower() == 'y':
                 await self.db.delete_user_history(self.user_id)
                 print("History cleared.")

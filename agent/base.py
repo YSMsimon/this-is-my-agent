@@ -27,6 +27,7 @@ async def _spin(stop: asyncio.Event):
 
 class Agent:
     _silent: bool = False  # when True: no spinner, no streaming, no stdout (parallel background workers)
+    _tool_event_fn = None  # optional callback(name: str) -> None called on each tool invocation
 
     def __init__(self, cfg: config, tools: Optional[List] = None):
         self.cfg = cfg
@@ -129,7 +130,9 @@ class Agent:
             except json.JSONDecodeError:
                 args = {}
             tool_call_id = tc['id']
-            if not self._silent:
+            if self._tool_event_fn:
+                self._tool_event_fn(name)
+            elif not self._silent:
                 print(f'{Fore.YELLOW}[tool: {name}]{Style.RESET_ALL}', flush=True)
             try:
                 result = await self._call_tool(name, args)
