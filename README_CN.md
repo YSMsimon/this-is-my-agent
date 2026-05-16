@@ -4,6 +4,11 @@
 
 一个完全基于异步的多智能体 CLI 助手，内置**自定义适配器层**用于对接各 LLM 提供商 —— 只需修改 `.env` 中的一行，即可在本地 Ollama 模型、DeepSeek、OpenAI 等之间自由切换。
 
+## 演示
+
+### 简单模式
+https://github.com/user-attachments/assets/32a61057-fc00-4fc3-ad41-3c9c4300f57b
+
 ---
 
 ## 智能体架构

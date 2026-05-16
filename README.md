@@ -7,7 +7,7 @@ A fully async, multi-agent CLI assistant with a **custom adapter layer** for LLM
 ## Demo
 
 ### Simple Mode
-https://github.com/user-attachments/assets/cc1a5129-6ef1-464a-8006-0c5a77f2368b
+https://github.com/user-attachments/assets/32a61057-fc00-4fc3-ad41-3c9c4300f57b
 
 ---
 
