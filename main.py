@@ -3,13 +3,17 @@ import fcntl
 import os
 import re
 import sys
-from aioconsole import ainput
 from colorama import Fore, Style
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.output import ColorDepth
 
 from memory.db import DB
 from common.config import config
 from agent.loop import MainAgent
 from cli.commands import CommandManager
+from cli.completions import SlashCompleter, FillBgProcessor, PROMPT, STYLE
+from cli.renderer import print_user_message
 from tools.manager import simple_tools
 
 _ANSI = re.compile(r'\x1b\[[0-9;]*m')
@@ -112,10 +116,28 @@ async def main():
     await _print_banner(cfg, db, user_id)
     agent = MainAgent(cfg, tools=simple_tools, db=db)
     commands = CommandManager(db, agent.user_id, cfg, agent)
+    session = PromptSession(
+        history=InMemoryHistory(),
+        completer=SlashCompleter(),
+        complete_while_typing=True,
+        style=STYLE,
+        include_default_pygments_style=False,
+        color_depth=ColorDepth.DEPTH_8_BIT,
+        input_processors=[FillBgProcessor()],
+    )
     try:
         while True:
-            user_input = await ainput("User> ")
+            try:
+                user_input = await session.prompt_async(PROMPT)
+            except EOFError:
+                break
+            sys.stdout.write('\033[0m')
+            sys.stdout.flush()
             _ensure_stdout_blocking()
+            if not user_input.strip():
+                print('\033[A\033[2K\r', end='', flush=True)
+                continue
+            print_user_message(user_input)
             if commands.is_command(user_input):
                 await commands.handle(user_input)
                 continue
@@ -124,6 +146,8 @@ async def main():
             except Exception as e:
                 print(f'{Fore.RED}Error: {e}{Style.RESET_ALL}')
     except KeyboardInterrupt:
+        pass
+    finally:
         print("\nExiting...")
         await db.close()
 

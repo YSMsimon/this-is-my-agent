@@ -8,6 +8,7 @@ from colorama import Fore, Style, init as colorama_init
 from adapters import Adapter
 from common.config import config
 from tools.manager import tool_handler, tools as default_tools
+from cli.renderer import StreamRenderer
 
 colorama_init(autoreset=False)
 
@@ -62,17 +63,10 @@ class Agent:
         else:
             stop = asyncio.Event()
             spinner = asyncio.create_task(_spin(stop))
-            first_chunk = True
+            renderer = StreamRenderer()
 
-            def on_chunk(chunk: str):
-                nonlocal first_chunk
-                if first_chunk:
-                    first_chunk = False
-                    stop.set()
-                    # Clear spinner line, then print header — safe because on_chunk is called
-                    # from within the async adapter (event loop thread), between spinner ticks.
-                    print(f'\r{" " * 25}\r{Fore.GREEN}Assistant>{Style.RESET_ALL} ', end='', flush=True)
-                print(f'{Fore.GREEN}{chunk}{Style.RESET_ALL}', end='', flush=True)
+            def on_chunk(chunk: str) -> None:
+                renderer.on_chunk(chunk)
 
             try:
                 response = await self.adapter.complete(
@@ -84,6 +78,7 @@ class Agent:
                 )
             except RuntimeError as e:
                 stop.set()
+                renderer.stop()
                 await spinner
                 if str(e) == 'context_window_exceeded':
                     print(f'\r{" " * 25}\r\n{Fore.YELLOW}Context window exceeded.{Style.RESET_ALL}')
@@ -94,16 +89,14 @@ class Agent:
                 return messages
             except Exception as e:
                 stop.set()
+                renderer.stop()
                 await spinner
                 print(f'\r{" " * 25}\r\n{Fore.RED}LLM error: {type(e).__name__}: {str(e)[:200]}{Style.RESET_ALL}')
                 return messages
 
             stop.set()
             await spinner
-            if first_chunk:
-                print('\r' + ' ' * 25 + '\r', end='', flush=True)
-            elif response.content:
-                print()
+            renderer.stop()
 
             self.session_input_tokens += response.input_tokens
             self.session_output_tokens += response.output_tokens

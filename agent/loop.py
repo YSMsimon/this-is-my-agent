@@ -3,6 +3,8 @@ import json
 from typing import List, Dict, Optional
 
 from colorama import Fore, Style
+from rich.console import Console
+from rich.markdown import Markdown
 
 from common.config import config
 from tools.manager import simple_tools, executor_tools, tool_handler
@@ -173,7 +175,8 @@ class MainAgent(Agent):
         answer = resp.content.strip()
         await self.db.add_message(self.user_id, 'user', user_message)
         await self.db.add_message(self.user_id, 'assistant', answer)
-        print(f'{Fore.GREEN}Assistant>{Style.RESET_ALL} {answer}')
+        print()
+        Console(highlight=False).print(Markdown(answer))
         turn_in = self.session_input_tokens - tokens_before[0]
         turn_out = self.session_output_tokens - tokens_before[1]
         if turn_in or turn_out:
