@@ -2,9 +2,8 @@ import asyncio
 import json
 from typing import List, Dict, Optional
 
-from colorama import Fore, Style
-from rich.console import Console
 from rich.markdown import Markdown
+from rich.text import Text
 
 from common.config import config
 from tools.manager import simple_tools, executor_tools, tool_handler
@@ -12,6 +11,7 @@ from tools.todo import ToDoManager, PlanItemStatus
 from memory.db import DB
 from agent.base import Agent
 from agent.profile import ProfileManager
+from cli.theme import console
 
 
 def _strip_orphaned_tool_messages(messages: List[Dict]) -> List[Dict]:
@@ -71,14 +71,13 @@ class MainAgent(Agent):
         return messages
 
     def _print_token_summary(self, turn_input: int, turn_output: int):
-        dim = '\033[2m'
-        reset = Style.RESET_ALL
         total = self.session_input_tokens + self.session_output_tokens
-        print(
-            f"{dim}  ↑ {turn_input:,} ↓ {turn_output:,} tokens"
-            f"  ·  session ↑ {self.session_input_tokens:,} ↓ {self.session_output_tokens:,}"
-            f"  (total {total:,}){reset}"
-        )
+        t = Text(justify='right')
+        t.append(f'↑ {turn_input:,} ↓ {turn_output:,}', style='dim')
+        t.append('  ·  session ', style='dim')
+        t.append(f'↑ {self.session_input_tokens:,} ↓ {self.session_output_tokens:,}', style='dim')
+        t.append(f'  ({total:,} total)', style='dim cyan')
+        console.print(t)
 
     async def run(self, user_message: str) -> str:
         if self.mode == 'deep':
@@ -101,47 +100,47 @@ class MainAgent(Agent):
         return ''
 
     async def _reason_about_plan(self, user_message: str, tasks: list[str]) -> str:
-        tasks_text = '\n'.join(f'{i+1}. {t}' for i, t in enumerate(tasks))
-        print(f'{Fore.CYAN}[Deep] Reasoning through plan...{Style.RESET_ALL}')
-        resp = await self.adapter.complete(
-            model=self.cfg.model,
-            messages=[
-                {'role': 'system', 'content': self.cfg.reasoning_prompt},
-                {'role': 'user', 'content': f'Request: {user_message}\n\nPlanned tasks:\n{tasks_text}'},
-            ]
-        )
+        with console.status('[dim cyan]Reasoning through plan…[/]', spinner='dots'):
+            resp = await self.adapter.complete(
+                model=self.cfg.model,
+                messages=[
+                    {'role': 'system', 'content': self.cfg.reasoning_prompt},
+                    {'role': 'user', 'content': f'Request: {user_message}\n\nPlanned tasks:\n' +
+                     '\n'.join(f'{i+1}. {t}' for i, t in enumerate(tasks))},
+                ]
+            )
         self.session_input_tokens += resp.input_tokens
         self.session_output_tokens += resp.output_tokens
         reasoning = resp.content.strip()
-        dim = '\033[2m'
-        print(f'{dim}{reasoning}\033[0m')
+        console.print(Text(reasoning, style='dim'))
         return reasoning
 
     async def _run_deep(self, user_message: str) -> str:
         from agent.planner import PlannerAgent
         from agent.evaluator import EvaluatorAgent
 
-        print(f'{Fore.CYAN}[Deep] Planning...{Style.RESET_ALL}')
-        tasks = await PlannerAgent(self.cfg).run(user_message)
-        print(f'{Fore.CYAN}[Deep] {len(tasks)} task(s):{Style.RESET_ALL}')
+        with console.status('[agent.deep]Planning…[/]', spinner='dots'):
+            tasks = await PlannerAgent(self.cfg).run(user_message)
+
+        console.print(f'[agent.deep]▸ Plan[/]  [dim]{len(tasks)} task(s)[/]')
         for i, t in enumerate(tasks):
-            print(f'  {i+1}. {t}')
+            console.print(f'  [dim]{i+1}.[/] {t}')
 
         reasoning = await self._reason_about_plan(user_message, tasks)
         context = f'{user_message}\n\n[Reasoning]\n{reasoning}'
 
-        print(f'{Fore.CYAN}[Deep] Starting executors...{Style.RESET_ALL}')
-        results = await self._run_executors(tasks, context)
+        with console.status('[agent.deep]Starting executors…[/]', spinner='dots'):
+            results = await self._run_executors(tasks, context)
 
         for round_num in range(3):
-            print(f'{Fore.CYAN}[Deep] Evaluating (round {round_num + 1})...{Style.RESET_ALL}')
-            evaluation = await EvaluatorAgent(self.cfg).evaluate(user_message, results)
+            with console.status(f'[agent.deep]Evaluating (round {round_num + 1})…[/]', spinner='dots'):
+                evaluation = await EvaluatorAgent(self.cfg).evaluate(user_message, results)
             if evaluation.passed:
-                print(f'{Fore.GREEN}[Deep] Evaluation passed.{Style.RESET_ALL}')
+                console.print('[agent.success]✓ Evaluation passed.[/]')
                 break
             if not evaluation.issues:
                 break
-            print(f'{Fore.YELLOW}[Deep] {len(evaluation.issues)} issue(s), spawning fix executors...{Style.RESET_ALL}')
+            console.print(f'[agent.warn]⚠ {len(evaluation.issues)} issue(s) — spawning fix executors…[/]')
             results.extend(await self._run_executors(evaluation.issues, context))
 
         return await self._synthesize(user_message, results)
@@ -150,12 +149,12 @@ class MainAgent(Agent):
         from agent.executor import ExecutorAgent
 
         async def run_one(task: str, idx: int) -> dict:
-            print(f'{Fore.YELLOW}[Executor {idx+1}] {task}{Style.RESET_ALL}')
+            console.print(f'  [agent.executor]▸ Executor {idx+1}[/]  [dim]{task}[/]')
             try:
                 result = await ExecutorAgent(self.cfg, tools=executor_tools).run(task, context)
             except Exception as e:
                 result = f"Executor error: {e}"
-            print(f'{Fore.YELLOW}[Executor {idx+1}] done.{Style.RESET_ALL}')
+            console.print(f'  [agent.executor]✓ Executor {idx+1}[/] [dim]done[/]')
             return {'task': task, 'result': result}
 
         return list(await asyncio.gather(*[run_one(t, i) for i, t in enumerate(tasks)]))
@@ -176,8 +175,8 @@ class MainAgent(Agent):
         await self.db.add_message(self.user_id, 'user', user_message)
         await self.db.add_message(self.user_id, 'assistant', answer)
         if not self._silent:
-            print()
-            Console(highlight=False).print(Markdown(answer))
+            console.print()
+            console.print(Markdown(answer))
         turn_in = self.session_input_tokens - tokens_before[0]
         turn_out = self.session_output_tokens - tokens_before[1]
         if turn_in or turn_out:

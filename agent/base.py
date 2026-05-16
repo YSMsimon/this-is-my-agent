@@ -1,33 +1,45 @@
 import asyncio
-import itertools
+import fcntl
 import json
+import os
+import sys
 from typing import List, Dict, Optional
 
-from colorama import Fore, Style, init as colorama_init
+from rich.live import Live
+from rich.markdown import Markdown
+from rich.spinner import Spinner
+from rich.text import Text
 
 from adapters import Adapter
 from common.config import config
 from tools.manager import tool_handler, tools as default_tools
-from cli.renderer import StreamRenderer
-
-colorama_init(autoreset=False)
+from cli.theme import console
 
 
-_SPINNER_FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+def _ensure_stdout_blocking():
+    try:
+        fd = sys.stdout.fileno()
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        if flags & os.O_NONBLOCK:
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
+    except Exception:
+        pass
 
 
-async def _spin(stop: asyncio.Event):
-    for frame in itertools.cycle(_SPINNER_FRAMES):
-        if stop.is_set():
-            break
-        print(f'\r{Fore.CYAN}{frame} Thinking…{Style.RESET_ALL}', end='', flush=True)
-        await asyncio.sleep(0.08)
-    # no cleanup here — caller clears the line
+def _print_tool_call(name: str, args: dict) -> None:
+    t = Text()
+    t.append('  ⚙ ', style='dim cyan')
+    t.append(name, style='bold cyan')
+    if args:
+        short = '  ' + ',  '.join(
+            f'{k}={repr(v)[:50]}' for k, v in list(args.items())[:3]
+        )
+        t.append(short, style='dim')
+    console.print(t)
 
 
 class Agent:
     _silent: bool = False  # when True: no spinner, no streaming, no stdout (parallel background workers)
-    _tool_event_fn = None  # optional callback(name: str) -> None called on each tool invocation
 
     def __init__(self, cfg: config, tools: Optional[List] = None):
         self.cfg = cfg
@@ -62,13 +74,20 @@ class Agent:
             except Exception:
                 return messages
         else:
-            stop = asyncio.Event()
-            spinner = asyncio.create_task(_spin(stop))
-            renderer = StreamRenderer()
+            _buf: list[str] = []
+            _live = Live(
+                Spinner('dots', text=' Thinking…', style='dim cyan'),
+                refresh_per_second=15,
+                console=console,
+                transient=False,
+            )
 
             def on_chunk(chunk: str) -> None:
-                renderer.on_chunk(chunk)
+                _buf.append(chunk)
+                _live.update(Markdown(''.join(_buf)))
 
+            _ensure_stdout_blocking()
+            _live.start()
             try:
                 response = await self.adapter.complete(
                     messages=[{'role': 'system', 'content': self._system_prompt}] + messages,
@@ -78,26 +97,21 @@ class Agent:
                     on_chunk=on_chunk,
                 )
             except RuntimeError as e:
-                stop.set()
-                renderer.stop()
-                await spinner
+                _live.stop()
                 if str(e) == 'context_window_exceeded':
-                    print(f'\r{" " * 25}\r\n{Fore.YELLOW}Context window exceeded.{Style.RESET_ALL}')
-                    print(f'  • Run {Fore.CYAN}/compact{Style.RESET_ALL} to summarise and compress your history')
-                    print(f'  • Or {Fore.CYAN}/clear-history{Style.RESET_ALL} to start fresh (cannot be undone)')
+                    console.print('\n[agent.warn]Context window exceeded.[/]')
+                    console.print('  • Run [bold cyan]/compact[/] to summarise and compress your history')
+                    console.print('  • Or [bold cyan]/clear-history[/] to start fresh')
                 else:
-                    print(f'\r{" " * 25}\r\n{Fore.RED}{e}{Style.RESET_ALL}')
+                    console.print(f'\n[agent.error]{e}[/]')
                 return messages
             except Exception as e:
-                stop.set()
-                renderer.stop()
-                await spinner
-                print(f'\r{" " * 25}\r\n{Fore.RED}LLM error: {type(e).__name__}: {str(e)[:200]}{Style.RESET_ALL}')
+                _live.stop()
+                console.print(f'\n[agent.error]LLM error: {type(e).__name__}: {str(e)[:200]}[/]')
                 return messages
 
-            stop.set()
-            await spinner
-            renderer.stop()
+            _ensure_stdout_blocking()
+            _live.stop()
 
             self.session_input_tokens += response.input_tokens
             self.session_output_tokens += response.output_tokens
@@ -130,10 +144,9 @@ class Agent:
             except json.JSONDecodeError:
                 args = {}
             tool_call_id = tc['id']
-            if self._tool_event_fn:
-                self._tool_event_fn(name)
-            elif not self._silent:
-                print(f'{Fore.YELLOW}[tool: {name}]{Style.RESET_ALL}', flush=True)
+            if not self._silent:
+                _ensure_stdout_blocking()
+                _print_tool_call(name, args)
             try:
                 result = await self._call_tool(name, args)
             except Exception as e:

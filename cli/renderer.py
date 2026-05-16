@@ -1,24 +1,24 @@
-from rich.console import Console
-from rich.markdown import Markdown
+import math
+import sys
+import shutil
 
-_CLEAR_LINE = '\r' + ' ' * 30 + '\r'
+_BG = '\033[48;5;235m'   # grey15  (#262626)
+_BW = '\033[1;37m'       # bold white
+_R  = '\033[0m'
 
 
-class StreamRenderer:
-    """Buffers streaming LLM output and renders it as markdown once complete."""
+def print_user_message(message: str) -> None:
+    """Redraw the submitted prompt line(s) with a full-width dark background.
 
-    def __init__(self):
-        self._buf = ""
+    Handles multi-line input by moving up as many lines as prompt_toolkit
+    occupied, then erasing to end of screen before redrawing.
+    """
+    width = shutil.get_terminal_size().columns
+    full = f'  ❯  {message}'
+    lines_occupied = max(1, math.ceil(len(full) / width))
+    last_line_len = len(full) % width
+    extra = (width - last_line_len) % width
+    padded = full + ' ' * extra
 
-    def on_chunk(self, chunk: str) -> None:
-        self._buf += chunk
-
-    def stop(self) -> str:
-        print(_CLEAR_LINE, end='', flush=True)
-        if self._buf:
-            Console(highlight=False).print(Markdown(self._buf))
-        return self._buf
-
-    @property
-    def started(self) -> bool:
-        return bool(self._buf)
+    sys.stdout.write(f'\033[{lines_occupied}A\r\033[J{_BG}{_BW}{padded}{_R}\n')
+    sys.stdout.flush()

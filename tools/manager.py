@@ -121,14 +121,15 @@ async def glob(pattern: str, path: str = '.') -> str:
 
 
 async def ask_user(question: str) -> str:
-    from colorama import Fore, Style
-    border = '─' * 50
-    await aprint(f'\n{Fore.CYAN}┌{border}┐')
-    await aprint(f'│ Question{Style.RESET_ALL}')
-    await aprint(f'{Fore.CYAN}│{Style.RESET_ALL}  {question}')
-    await aprint(f'{Fore.CYAN}│{Style.RESET_ALL}  {Fore.WHITE}(press Enter to skip){Style.RESET_ALL}')
-    await aprint(f'{Fore.CYAN}└{border}┘{Style.RESET_ALL}')
-    answer = await ainput(f'{Fore.CYAN}Answer>{Style.RESET_ALL} ')
+    from rich.panel import Panel
+    from cli.theme import console
+    console.print(Panel(
+        f'{question}\n\n[dim](press Enter to skip)[/]',
+        title='[bold cyan]Question[/]',
+        border_style='cyan',
+        padding=(0, 2),
+    ))
+    answer = await ainput('Answer> ')
     return answer.strip() if answer.strip() else '[skipped]'
 
 
