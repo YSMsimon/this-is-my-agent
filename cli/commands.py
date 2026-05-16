@@ -4,6 +4,7 @@ import json
 from agent.compact import Compactor
 from common.config import config, write_env_key
 from cli.theme import console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -118,7 +119,8 @@ class CommandManager:
             with console.status('[dim]Compacting history…[/]', spinner='dots'):
                 compactor = Compactor(self.db, self.user_id, self.cfg, self.agent.adapter)
                 summary = await compactor.compact(extra_prompt=extra)
-            console.print(f'[agent.success]✓[/] [dim]Done.[/]\n\n{summary}')
+            console.print('[agent.success]✓[/] [dim]Done.[/]')
+            console.print(Markdown(summary))
             return True
 
         if cmd == '/simple':

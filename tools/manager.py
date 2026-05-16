@@ -115,28 +115,43 @@ async def get_skill(name: str) -> str:
 async def grep(pattern: str, path: str, recursive: bool = True) -> str:
     import re as _re
     from pathlib import Path as _Path
-    results = []
-    target = _Path(path)
-    files = target.rglob('*') if (recursive and target.is_dir()) else [target]
-    for f in files:
-        if not f.is_file():
-            continue
-        try:
-            for i, line in enumerate(f.read_text(errors='ignore').splitlines(), 1):
-                line = line.replace('\x00', '')
-                if line and _re.search(pattern, line):
-                    results.append(f"{f}:{i}: {line.strip()}")
-        except Exception:
-            continue
-    return '\n'.join(results) if results else "No matches found."
+
+    def _run():
+        requested = (WORKDIR / path).resolve()
+        target = requested if str(requested).startswith(str(WORKDIR)) else WORKDIR
+        results = []
+        files = target.rglob('*') if (recursive and target.is_dir()) else [target]
+        for f in files:
+            if not f.is_file():
+                continue
+            try:
+                for i, line in enumerate(f.read_text(errors='ignore').splitlines(), 1):
+                    line = line.replace('\x00', '')
+                    if line and _re.search(pattern, line):
+                        results.append(f"{f}:{i}: {line.strip()}")
+            except Exception:
+                continue
+        return results
+
+    try:
+        results = await asyncio.to_thread(_run)
+        return '\n'.join(results) if results else "No matches found."
+    except Exception as e:
+        return f"Error: {e}"
 
 
 async def glob(pattern: str, path: str = '.') -> str:
     from pathlib import Path
-    try:
-        root = Path(path).expanduser().resolve()
+
+    def _run():
+        requested = (WORKDIR / path).resolve()
+        root = requested if str(requested).startswith(str(WORKDIR)) else WORKDIR
         matches = sorted(root.glob(pattern))
-        return '\n'.join(str(m) for m in matches) if matches else "No files found."
+        return [str(m) for m in matches]
+
+    try:
+        results = await asyncio.to_thread(_run)
+        return '\n'.join(results) if results else "No files found."
     except Exception as e:
         return f"Error: {e}"
 
