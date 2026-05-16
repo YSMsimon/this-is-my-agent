@@ -75,11 +75,14 @@ class Agent:
                 return messages
         else:
             _buf: list[str] = []
+            # transient=True: always erase the Live area on stop.
+            # If there was streamed content we re-print it below — this avoids
+            # leaving ghost spinner frames when a turn produces only tool calls.
             _live = Live(
                 Spinner('dots', text=' Thinking…', style='dim cyan'),
                 refresh_per_second=15,
                 console=console,
-                transient=False,
+                transient=True,
             )
 
             def on_chunk(chunk: str) -> None:
@@ -112,6 +115,9 @@ class Agent:
 
             _ensure_stdout_blocking()
             _live.stop()
+            # Don't re-print here — we only render content permanently in the
+            # no-tool-calls branch below.  For turns that include tool calls,
+            # the streaming view was transient (good: shows thinking, then clears).
 
             self.session_input_tokens += response.input_tokens
             self.session_output_tokens += response.output_tokens
@@ -132,6 +138,10 @@ class Agent:
         messages = messages + [assistant_msg]
 
         if not tool_calls:
+            # Final turn — permanently render the content now that we know
+            # no tool calls follow (avoids double-print on Continue loops).
+            if not self._silent and full_content:
+                console.print(Markdown(full_content))
             if not self._task_complete():
                 messages.append({'role': 'user', 'content': 'Continue with the remaining tasks.'})
                 return await self._execute(messages, _depth + 1)

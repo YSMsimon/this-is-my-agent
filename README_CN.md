@@ -20,7 +20,7 @@
  (evaluator.py)
 ```
 
-所有智能体均继承自共享的 `Agent` 基类，该基类负责处理流式 LLM 循环、工具调度、加载动画和深度限制。每个子类只需重写自己需要的部分。
+所有智能体均继承自共享的 `Agent` 基类，该基类负责处理 Rich.Live 流式渲染、工具调度和深度限制。每个子类只需重写自己需要的部分。
 
 ---
 
@@ -37,9 +37,9 @@ adapters/
 └── gemini_adapter.py         # Google Gemini 适配器
 ```
 
-DeepSeek、OpenAI 以及任意外部提供商（OpenRouter、Together AI、百度 AI 等）均共用同一个适配器 —— `OpenAICompatAdapter` —— 因为它们都遵循 OpenAI API 协议。路由器（`__init__.py`）只需根据提供商传入对应的 `api_key` 和 `base_url` 即可。只有 Ollama（嵌入支持）、Anthropic 和 Gemini 需要独立适配器。
+DeepSeek、OpenAI 以及任意外部提供商（OpenRouter、Together AI、百度 AI 等）均共用同一个适配器 —— `OpenAICompatAdapter` —— 因为它们都遵循 OpenAI API 协议。只有 Ollama（嵌入支持）、Anthropic 和 Gemini 需要独立适配器。
 
-模型字符串采用 `提供商/模型名` 格式。`Adapter` 类读取前缀、路由到对应的提供商适配器，并在调用 API 前自动去除前缀。所有适配器均返回统一的 `Response` 对象：
+模型字符串采用 `提供商/模型名` 格式，所有适配器均返回统一的 `Response` 对象：
 
 ```python
 class Response(BaseModel):
@@ -62,15 +62,17 @@ class Response(BaseModel):
     ▼
 MainAgent
     │  ┌──────────────────────────────────────┐
-    ├──► 工具：web_search, fetch_text,         │
-    │  │      read_file, ask_user, to_do      │
+    ├──► 工具：run_bash, read_file,            │
+    │  │      write_file, edit_file,          │
+    │  │      grep, glob, web_search,         │
+    │  │      fetch_text, ask_user, to_do     │
     │  └──────────────────────────────────────┘
     │
     ▼
-流式响应输出
+流式响应输出（Markdown 渲染）
 ```
 
-单智能体循环，拥有完整工具访问权限，并注入 RAG 记忆与用户画像上下文。速度快，适合大多数日常任务。
+单智能体循环，拥有完整工具访问权限，并注入用户画像上下文。速度快，适合大多数日常任务。
 
 ---
 
@@ -106,7 +108,7 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
            响应输出         EvaluatorAgent（重新评估）
 ```
 
-深度模式在规划与执行之间新增了**推理步骤**。规划器生成任务列表后，主智能体会先对整个计划进行思考 —— 检查任务顺序、依赖关系和潜在风险 —— 再启动各执行器。推理结果会作为上下文传递给每个执行器。该步骤的提示词位于 `prompts/reasoning.md`，可直接编辑以调整推理行为。
+深度模式在规划与执行之间新增了**推理步骤**，推理结果会作为上下文传递给每个执行器。该步骤的提示词位于 `prompts/reasoning.md`，可直接编辑以调整推理行为。
 
 ---
 
@@ -114,7 +116,7 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 
 ```
 .
-├── main.py                  # 入口文件（异步交互式命令行）
+├── main.py                  # 入口文件（异步交互式命令行、欢迎横幅、prompt_toolkit 会话）
 ├── requirements.txt
 ├── Docker-compose.yml       # PostgreSQL + pgvector
 ├── init.sql                 # 数据库表结构（首次启动时自动执行）
@@ -124,14 +126,14 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 │   ├── __init__.py          # Adapter：按提供商前缀统一路由
 │   ├── schema.py            # Response 数据类（统一输出格式）
 │   ├── base_adapter.py      # 抽象适配器接口
-│   ├── openai_compat_adapter.py  # DeepSeek、OpenAI、OpenRouter 等（共用 OpenAI 客户端）
+│   ├── openai_compat_adapter.py  # DeepSeek、OpenAI、OpenRouter 等
 │   ├── ollama_adapter.py         # Ollama 适配器（含嵌入支持）
 │   ├── anthropic_adapter.py      # Anthropic 适配器
 │   └── gemini_adapter.py         # Gemini 适配器
 │
 ├── agent/
-│   ├── base.py              # 基类 Agent：流式循环、工具调度、钩子函数
-│   ├── loop.py              # MainAgent：记忆、RAG、画像、模式路由
+│   ├── base.py              # 基类 Agent：Rich.Live 流式渲染、工具调度、深度限制
+│   ├── loop.py              # MainAgent：画像、模式路由、Token 计数汇总
 │   ├── planner.py           # PlannerAgent：结构化任务分解
 │   ├── executor.py          # ExecutorAgent：携带工具执行单个任务
 │   ├── evaluator.py         # EvaluatorAgent：结构化通过/失败评估
@@ -139,7 +141,11 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 │   └── profile.py           # ProfileManager：后台用户画像更新
 │
 ├── cli/
-│   └── commands.py          # CLI 命令处理器
+│   ├── commands.py          # CLI 命令处理器（/help、/model、/compact 等）
+│   ├── completions.py       # prompt_toolkit SlashCompleter + FillBgProcessor
+│   ├── renderer.py          # print_user_message（深色背景提交行重绘）
+│   ├── theme.py             # 共享 Rich Console + 命名主题样式
+│   └── diff.py              # Claude Code 风格红/绿差异渲染器
 │
 ├── common/
 │   └── config.py            # 加载 .env 和提示词文件
@@ -148,8 +154,8 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 │   └── db.py                # asyncpg 连接池、历史记录、知识库、画像
 │
 ├── tools/
-│   ├── manager.py           # 工具定义与命名工具集
-│   ├── crawl.py             # web_search, fetch_text, fetch_html
+│   ├── manager.py           # 工具定义、命名工具集、样式化确认面板
+│   ├── crawl.py             # web_search, fetch_text, fetch_html（PDF 通过 pymupdf）
 │   ├── todo.py              # ToDoManager + to_do 工具
 │   └── skill_manager.py     # 技能加载器
 │
@@ -171,8 +177,8 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 
 | 智能体 | 可用工具 |
 |--------|---------|
-| MainAgent（`/simple`） | web_search, fetch_text, read_file, ask_user, to_do |
-| ExecutorAgent（`/deep`） | web_search, fetch_text, read_file, ask_user |
+| MainAgent（`/simple`） | run_bash, read_file, write_file, edit_file, grep, glob, web_search, fetch_text, ask_user, to_do |
+| ExecutorAgent（`/deep`） | run_bash, read_file, write_file, edit_file, grep, glob, web_search, fetch_text |
 | PlannerAgent | 无 |
 | EvaluatorAgent | 无 |
 
@@ -195,13 +201,10 @@ ExecutorAgent-1   ExecutorAgent-2   ExecutorAgent-N
 | `/model` | 显示当前所有模型配置 |
 | `/model <提供商/模型名>` | 更改主模型（如 `/model deepseek/deepseek-chat`） |
 | `/model <角色> <提供商/模型名>` | 更改子模型：`compact`、`planner`、`evaluator`、`profile` |
-| `/apikey deepseek <密钥>` | 更新 DeepSeek API 密钥 — 直接写入 `.env` 文件 |
-| `/apikey ollama <密钥>` | 更新 Ollama API 密钥 — 直接写入 `.env` 文件 |
-| `/apikey external <密钥>` | 更新外部提供商 API 密钥 — 直接写入 `.env` 文件 |
-
-**模型偏好**（`/model`）保存至数据库，下次启动时自动恢复。子模型（`compact`、`planner`、`evaluator`、`profile`）若未单独设置则默认使用主 `MODEL`，数据库中的值优先于 `.env`。
-
-**API 密钥**（`/apikey`）直接写入 `.env` 文件，该文件始终是唯一来源。手动编辑 `.env` 与使用 `/apikey` 命令效果完全相同，不存在数据库副本与文件内容冲突的问题。
+| `/model all <提供商/模型名>` | 将所有模型（主模型 + 全部子模型）设为同一值 |
+| `/apikey deepseek <密钥>` | 更新 DeepSeek API 密钥 —— 直接写入 `.env` 文件 |
+| `/apikey ollama <密钥>` | 更新 Ollama API 密钥 —— 直接写入 `.env` 文件 |
+| `/apikey external <密钥>` | 更新外部提供商 API 密钥 —— 直接写入 `.env` 文件 |
 
 ---
 

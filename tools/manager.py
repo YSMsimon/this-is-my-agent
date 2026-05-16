@@ -5,6 +5,7 @@ from tools.todo import PlanItem, ToDoManager
 from tools.skill_manager import SkillManager
 from tools.crawl import fetch_text, web_search
 from pathlib import Path
+from cli.theme import console
 
 _skill_manager = SkillManager(Path(__file__).parent.parent / "skills")
 _skill_manager.load_skills()
@@ -12,13 +13,22 @@ _skill_manager.load_skills()
 
 async def run_bash(command: str) -> str:
     if 'rm' in command or 'sudo' in command:
-        while True:
-            user_input = await ainput("Warning: Command contains 'rm' or 'sudo'. Are you sure you want to run this? (Y/N) ")
-            if user_input.lower() == 'y':
-                break
-            else:
-                return "Command not executed, cancelled by user."
-    print(f"Running command: {command}")
+        from rich.panel import Panel
+        from rich.text import Text
+        body = Text()
+        body.append(command + '\n\n', style='bold white')
+        body.append('Continue? ', style='dim')
+        body.append('(Y/N)', style='bold yellow')
+        console.print(Panel(
+            body,
+            title='[bold yellow]⚠ Destructive command[/]',
+            border_style='yellow',
+            padding=(0, 2),
+        ))
+        user_input = await ainput('  ❯  ')
+        if user_input.strip().lower() != 'y':
+            return "Command not executed — cancelled by user."
+    console.print(f'[dim]Running:[/] {command}')
     try:
         proc = await asyncio.create_subprocess_shell(
             command,
@@ -40,16 +50,27 @@ async def read_file(file_path: str) -> str:
 
 
 async def write_file(file_path: str, content: str) -> str:
+    from pathlib import Path as _Path
+    from cli.diff import print_diff, print_new_file
     try:
+        p = _Path(file_path)
+        is_new = not p.exists()
+        old_content = '' if is_new else _read_file_sync(file_path)
         await asyncio.to_thread(_write_file_sync, file_path, content)
+        if is_new:
+            print_new_file(file_path, content)
+        else:
+            print_diff(file_path, old_content, content)
     except Exception as e:
         return f"Error writing file: {e}"
     return f"File {file_path} written successfully."
 
 
 async def edit_file(file_path: str, old: str, new: str) -> str:
+    from cli.diff import print_diff
     try:
         await asyncio.to_thread(_edit_file_sync, file_path, old, new)
+        print_diff(file_path, old, new)
     except Exception as e:
         return f"Error editing file: {e}"
     return f"File {file_path} edited successfully."
@@ -122,7 +143,6 @@ async def glob(pattern: str, path: str = '.') -> str:
 
 async def ask_user(question: str) -> str:
     from rich.panel import Panel
-    from cli.theme import console
     console.print(Panel(
         f'{question}\n\n[dim](press Enter to skip)[/]',
         title='[bold cyan]Question[/]',

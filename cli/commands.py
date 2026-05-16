@@ -4,7 +4,22 @@ import json
 from agent.compact import Compactor
 from common.config import config, write_env_key
 from cli.theme import console
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
+
+
+def _danger_panel(title: str, description: str) -> None:
+    body = Text()
+    body.append(description + '\n\n', style='white')
+    body.append('Continue? ', style='dim')
+    body.append('(Y/N)', style='bold red')
+    console.print(Panel(
+        body,
+        title=f'[bold red]⚠  {title}[/]',
+        border_style='red',
+        padding=(0, 2),
+    ))
 
 COMMANDS = {
     '/help':                        'Show available commands',
@@ -71,7 +86,8 @@ class CommandManager:
             sys.exit(0)
 
         if cmd == '/delete-profile':
-            confirm = await self._confirm("Delete your user profile? This cannot be undone. (Y/N): ")
+            _danger_panel('Delete profile', 'This will permanently delete your saved user profile.')
+            confirm = await self._confirm('  ❯  ')
             if confirm.strip().lower() == 'y':
                 await self.db.delete_user_profile(self.user_id)
                 console.print('[agent.success]✓[/] Profile deleted.')
@@ -88,7 +104,8 @@ class CommandManager:
             return True
 
         if cmd == '/clear-history':
-            confirm = await self._confirm("Delete all conversation history? This cannot be undone. (Y/N): ")
+            _danger_panel('Clear history', 'This will permanently delete all conversation history.')
+            confirm = await self._confirm('  ❯  ')
             if confirm.strip().lower() == 'y':
                 await self.db.delete_user_history(self.user_id)
                 console.print('[agent.success]✓[/] History cleared.')

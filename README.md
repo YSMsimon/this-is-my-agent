@@ -11,8 +11,6 @@ https://github.com/user-attachments/assets/cc1a5129-6ef1-464a-8006-0c5a77f2368b
 
 ---
 
----
-
 ## Agent Architecture
 
 ```
@@ -27,7 +25,7 @@ https://github.com/user-attachments/assets/cc1a5129-6ef1-464a-8006-0c5a77f2368b
     (evaluator.py)
 ```
 
-All agents inherit from a shared `Agent` base class that handles the streaming LLM loop, tool execution, spinner, and depth limiting. Each subclass overrides only what it needs.
+All agents inherit from a shared `Agent` base class that handles the streaming LLM loop, tool execution, `Rich.Live` spinner/renderer, and depth limiting. Each subclass overrides only what it needs.
 
 ---
 
@@ -70,14 +68,17 @@ User Input
 MainAgent
     │  ┌──────────────────────────────────┐
     ├──► Tools: web_search, fetch_text,   │
-    │  │        read_file, ask_user, to_do│
+    │  │        read_file, write_file,    │
+    │  │        edit_file, run_bash,      │
+    │  │        grep, glob, ask_user,     │
+    │  │        to_do                     │
     │  └──────────────────────────────────┘
     │
     ▼
-Response (streamed)
+Response (streamed, rendered as Markdown)
 ```
 
-Single agent loop with full tool access, RAG memory injection, and user profile context. Fast and suitable for most tasks.
+Single agent loop with full tool access and user profile context. Fast and suitable for most tasks.
 
 ---
 
@@ -121,7 +122,7 @@ Deep mode adds a **reasoning step** between planning and execution. After the pl
 
 ```
 .
-├── main.py                  # Entry point (async REPL)
+├── main.py                  # Entry point (async REPL, banner, prompt_toolkit session)
 ├── requirements.txt
 ├── Docker-compose.yml       # PostgreSQL + pgvector
 ├── init.sql                 # DB schema (auto-run on first start)
@@ -131,14 +132,14 @@ Deep mode adds a **reasoning step** between planning and execution. After the pl
 │   ├── __init__.py          # Adapter: unified router by provider prefix
 │   ├── schema.py            # Response dataclass (canonical output format)
 │   ├── base_adapter.py      # Abstract base adapter interface
-│   ├── openai_compat_adapter.py  # DeepSeek, OpenAI, OpenRouter, etc. (shared OpenAI client)
+│   ├── openai_compat_adapter.py  # DeepSeek, OpenAI, OpenRouter, etc.
 │   ├── ollama_adapter.py         # Ollama provider adapter (+ embeddings)
 │   ├── anthropic_adapter.py      # Anthropic provider adapter
 │   └── gemini_adapter.py         # Gemini provider adapter
 │
 ├── agent/
-│   ├── base.py              # Base Agent: streaming loop, tool dispatch, hooks
-│   ├── loop.py              # MainAgent: memory, RAG, profile, simple/deep routing
+│   ├── base.py              # Base Agent: Rich.Live streaming, tool dispatch, depth limit
+│   ├── loop.py              # MainAgent: memory, profile, simple/deep routing, token summary
 │   ├── planner.py           # PlannerAgent: structured task decomposition
 │   ├── executor.py          # ExecutorAgent: executes one task with tools
 │   ├── evaluator.py         # EvaluatorAgent: structured pass/fail evaluation
@@ -146,7 +147,11 @@ Deep mode adds a **reasoning step** between planning and execution. After the pl
 │   └── profile.py           # ProfileManager: background user profiling
 │
 ├── cli/
-│   └── commands.py          # CLI command handler
+│   ├── commands.py          # CLI command handler (/help, /model, /compact, etc.)
+│   ├── completions.py       # prompt_toolkit SlashCompleter + FillBgProcessor
+│   ├── renderer.py          # print_user_message (dark-bg submitted line)
+│   ├── theme.py             # Shared Rich Console + named theme styles
+│   └── diff.py              # Claude Code-style red/green diff renderer
 │
 ├── common/
 │   └── config.py            # Loads .env and prompt files
@@ -155,8 +160,8 @@ Deep mode adds a **reasoning step** between planning and execution. After the pl
 │   └── db.py                # asyncpg pool, history, knowledge, profiles
 │
 ├── tools/
-│   ├── manager.py           # Tool definitions and named tool sets
-│   ├── crawl.py             # web_search, fetch_text, fetch_html
+│   ├── manager.py           # Tool definitions, named tool sets, styled confirmations
+│   ├── crawl.py             # web_search, fetch_text, fetch_html (PDF via pymupdf)
 │   ├── todo.py              # ToDoManager + to_do tool
 │   └── skill_manager.py     # Skills loader
 │
@@ -178,8 +183,8 @@ Deep mode adds a **reasoning step** between planning and execution. After the pl
 
 | Agent | Tools |
 |-------|-------|
-| MainAgent (`/simple`) | web_search, fetch_text, read_file, ask_user, to_do |
-| ExecutorAgent (`/deep`) | web_search, fetch_text, read_file, ask_user |
+| MainAgent (`/simple`) | run_bash, read_file, write_file, edit_file, grep, glob, web_search, fetch_text, ask_user, to_do |
+| ExecutorAgent (`/deep`) | run_bash, read_file, write_file, edit_file, grep, glob, web_search, fetch_text |
 | PlannerAgent | none |
 | EvaluatorAgent | none |
 
@@ -202,13 +207,10 @@ Deep mode adds a **reasoning step** between planning and execution. After the pl
 | `/model` | Show all current model settings |
 | `/model <provider/model>` | Change the main model (e.g. `/model deepseek/deepseek-chat`) |
 | `/model <role> <provider/model>` | Change a sub-model: `compact`, `planner`, `evaluator`, `profile` |
+| `/model all <provider/model>` | Set all models (main + all sub-models) to the same value |
 | `/apikey deepseek <key>` | Update DeepSeek API key — writes directly to `.env` |
 | `/apikey ollama <key>` | Update Ollama API key — writes directly to `.env` |
 | `/apikey external <key>` | Update external provider API key — writes directly to `.env` |
-
-**Model preferences** (`/model`) are saved to the database and restored automatically on the next launch. Sub-models (`compact`, `planner`, `evaluator`, `profile`) default to `MODEL` if not set — database values override `.env`.
-
-**API keys** (`/apikey`) are written directly to your `.env` file — the file is always the source of truth. Editing `.env` manually and using `/apikey` are equivalent; there is no separate DB copy that could conflict.
 
 ---
 
