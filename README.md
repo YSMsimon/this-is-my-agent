@@ -1,6 +1,6 @@
 [中文版](README_CN.md)
 
-> ***Currently discounted. Expect bugs, incomplete features, and rough edges. Error handling and try/catch coverage will be improved over time.**
+> **Currently discounted. Expect bugs, incomplete features, and rough edges. Error handling and try/catch coverage will be improved over time.**
 
 A fully async, multi-agent CLI assistant with a **custom adapter layer** for LLM providers — swap between local Ollama models, OpenAI, DeepSeek, and more by changing one line in `.env`.
 
